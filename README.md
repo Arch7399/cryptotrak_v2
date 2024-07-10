@@ -37,6 +37,18 @@ This project is an upgraded cryptocurrency analysis framework designed to identi
   - Designed to be easily extensible. You can add new filters, indicators, or modify the scoring algorithm with minimal changes to the code.
 
 
+## Further Ongoing Upgrades
+
+- **Backtesting**:
+  - The backtesting framework to evaluate how different threshold combinations would perform using historical data, helping to understand the effectiveness of filters over time.
+
+- **Machine Learning Optimization**:
+  - Using techniques like grid search or genetic algorithms, to optimize the thresholds based on historical performance.
+
+- **UI Development**:
+  - For better visualization of the analysis results.
+
+
 ## Main Components
 
 - `config.py`: 
