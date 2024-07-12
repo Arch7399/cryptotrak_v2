@@ -10,6 +10,7 @@ from mixed_filters import apply_tandem_filters
 from promising_currency_pipeline import performers
 from junk_currency_filter import filter_junk_currencies
 from prepare_data import prepare_raw_data
+from price_difference import calculate_latest_price_difference
 
 load_dotenv()
 
@@ -25,6 +26,12 @@ def main():
     prepare_raw_data(df)
 
     df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/CryptoAPI.csv")
+
+    # Calculate and append price differences between consecutive timestamps
+    calculate_latest_price_difference(
+        df, rf"C:/Users/{os.getenv('USER')}/Desktop/Crypto_Price_Diff.csv"
+    )
+
     # Read and process data
     df_processed = process_data(df)
 
@@ -63,7 +70,7 @@ def main():
 
     if performing_currencies:
         recipient_emails = os.getenv("RECIPIENTS")
-        send_email_alert(performing_currencies, recipient_emails)
+        # send_email_alert(performing_currencies, recipient_emails)
         print(f"{performing_currencies} are performing well!")
 
     print("Finished")
