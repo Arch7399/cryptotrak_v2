@@ -87,13 +87,13 @@ def apply_filters(df):
     df_discrepancy = market_cap_volume_discrepancy(df)
 
     return {
-        "Price Spikes": df_spikes,
-        "Price Crashes": df_crashes,
-        "Volume Surges": df_volume_surges,
-        "Low Liquidity": df_low_liquidity,
+        "PriceSpikes": df_spikes,
+        "PriceCrashes": df_crashes,
+        "VolumeSurges": df_volume_surges,
+        "LowLiquidity": df_low_liquidity,
         "Pump": df_pump,
         "Dump": df_dump,
-        "Low RSI": df_low_rsi,
-        "High RSI": df_high_rsi,
-        "Market Cap_Volume Discrepancy": df_discrepancy,
+        "LowRSI": df_low_rsi,
+        "HighRSI": df_high_rsi,
+        "MarketCapVolumeDiscrepancy": df_discrepancy,
     }
