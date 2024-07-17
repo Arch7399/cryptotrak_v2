@@ -11,6 +11,9 @@ def calculate_latest_price_difference(df, diff_csv_path):
     # Ensure timestamp is in datetime format
     df["timestamp"] = pd.to_datetime(df["timestamp"])
 
+    # Drop any duplicate rows for the same `slug` and `timestamp`
+    df = df.drop_duplicates(subset=["slug", "timestamp"], keep="last")
+
     # Get the two latest timestamps
     latest_timestamps = df["timestamp"].drop_duplicates().nlargest(2)
 
