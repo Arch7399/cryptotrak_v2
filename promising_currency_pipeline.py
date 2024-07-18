@@ -7,10 +7,12 @@ from data_processing import process_data
 from pipeline_filters import apply_filters
 from pipeline_mixed_filters import apply_tandem_filters
 from datetime import datetime, timedelta
+from latest_data import filter_latest
 
 
 def prepare_data(raw_data_path):
     df = pd.read_csv(raw_data_path)
+    df = filter_latest(df)
     df = df.sort_values("timestamp")
     return df
 
@@ -22,7 +24,6 @@ def calculate_z_scores(df, columns):
 
 
 def calculate_time_decay(df, half_life=timedelta(hours=6)):
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
     now = df["timestamp"].max()
     df["time_decay"] = np.exp(-np.log(2) * (now - df["timestamp"]) / half_life)
     return df
@@ -159,6 +160,7 @@ def identify_promising_currencies(raw_data_path):
     # Select relevant columns
     columns_to_keep = [
         "name",
+        "slug",
         "symbol",
         "promise_score",
         "market_dominance",
@@ -194,10 +196,19 @@ def performers():
     promising_currencies = identify_promising_currencies(raw_data_path)
 
     # Save the full results to CSV
-    promising_currencies.to_csv(
-        f"C:/Users/{os.getenv('USER')}/Desktop/Analysis/promising_currencies.csv",
-        index=False,
-    )
+    if not os.path.isfile(
+        rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv"
+    ):
+        promising_currencies.to_csv(
+            rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv",
+            header="column_names",
+        )
+    else:
+        promising_currencies.to_csv(
+            rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv",
+            mode="a",
+            header=False,
+        )
 
     # Get the names of the top 5 performing currencies
     top_5_performers = promising_currencies["name"].head(5).tolist()
