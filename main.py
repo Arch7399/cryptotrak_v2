@@ -10,7 +10,9 @@ from mixed_filters import apply_tandem_filters
 from promising_currency_pipeline import performers
 from junk_currency_filter import filter_junk_currencies
 from prepare_data import prepare_raw_data
-from price_difference import calculate_latest_price_difference
+from append_price_difference import append_price_changes
+from latest_data import filter_latest
+from filters_dump import filter_dump
 
 load_dotenv()
 
@@ -27,43 +29,17 @@ def main():
 
     df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/CryptoAPI.csv")
 
-    # Calculate and append price differences between consecutive timestamps
-    calculate_latest_price_difference(
-        df, rf"C:/Users/{os.getenv('USER')}/Desktop/Crypto_Price_Diff.csv"
-    )
+    latest_df = filter_latest(df)
 
     # Read and process data
-    df_processed = process_data(df)
+    df_processed = process_data(latest_df)
 
     # Apply filters
     anomaly_results = apply_filters(df_processed)
-
-    # Export results
-    for metric, df_top in anomaly_results.items():
-        if "index" in df_top.columns:
-            df_top = df_top.drop(["index"], axis=1)
-        df_top.to_csv(
-            rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/{metric}.csv",
-            mode="w",
-            header=True,
-            index=False,
-        )
-        print(f"{metric} exported!")
-
+    filter_dump(anomaly_results)
     # Apply tandem filters
     tandem_metrics = apply_tandem_filters(df_processed)
-
-    # Export tandem filter results
-    for metric, df_top in tandem_metrics.items():
-        if "index" in df_top.columns:
-            df_top = df_top.drop(["index"], axis=1)
-        df_top.to_csv(
-            f"C:/Users/{os.getenv('USER')}/Desktop/Analysis/Tandem/{metric}.csv",
-            mode="w",
-            header=True,
-            index=False,
-        )
-        print(f"{metric} exported!")
+    filter_dump(tandem_metrics)
 
     # Identify performing currencies
     performing_currencies = performers()
@@ -73,8 +49,10 @@ def main():
         # send_email_alert(performing_currencies, recipient_emails)
         print(f"{performing_currencies} are performing well!")
 
+    append_price_changes()
+
     print("Finished")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()
