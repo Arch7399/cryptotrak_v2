@@ -1,6 +1,3 @@
-import pandas as pd
-
-
 def price_spikes_crashes(df, spike_threshold=20, crash_threshold=-20):
     df["spike_score"] = df[
         [
