@@ -46,13 +46,13 @@ def main():
 
     if performing_currencies:
         recipient_emails = os.getenv("RECIPIENTS")
-        # send_email_alert(performing_currencies, recipient_emails)
+        send_email_alert(performing_currencies, recipient_emails)
         print(f"{performing_currencies} are performing well!")
 
-    append_price_changes()
+    append_price_changes(df)
 
     print("Finished")
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()

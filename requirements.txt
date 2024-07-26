@@ -4,4 +4,4 @@ matplotlib
 requests
 python-dotenv
 scipy
-sklearn.preprocessing
+scikit-learn
