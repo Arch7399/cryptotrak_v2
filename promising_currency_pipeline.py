@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import IsolationForest
+from sklearn.impute import SimpleImputer
 from data_processing import process_data
 from pipeline_filters import apply_filters
 from pipeline_mixed_filters import apply_tandem_filters
@@ -50,7 +52,6 @@ def calculate_flag_severity(df):
 
     df["flag_severity"] = df["positive_flags"] - df["negative_flags"] * 1.5
     return df
-    pass
 
 
 def improve_promising_currency_code(df):
@@ -79,6 +80,21 @@ def improve_promising_currency_code(df):
         & (df["SMA_50"].shift(1) <= df["SMA_200"].shift(1))
     ).astype(int)
 
+    # Add MACD
+    df["MACD"] = (
+        df["quote.USD.price"].ewm(span=12, adjust=False).mean()
+        - df["quote.USD.price"].ewm(span=26, adjust=False).mean()
+    )
+    df["MACD_signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+    df["MACD_histogram"] = df["MACD"] - df["MACD_signal"]
+
+    # Add Bollinger Bands
+    df["BB_middle"] = df["quote.USD.price"].rolling(window=20).mean()
+    df["BB_std"] = df["quote.USD.price"].rolling(window=20).std()
+    df["BB_upper"] = df["BB_middle"] + (df["BB_std"] * 2)
+    df["BB_lower"] = df["BB_middle"] - (df["BB_std"] * 2)
+    df["BB_width"] = (df["BB_upper"] - df["BB_lower"]) / df["BB_middle"]
+
     # Normalize features
     scaler = MinMaxScaler()
     features_to_normalize = [
@@ -88,8 +104,36 @@ def improve_promising_currency_code(df):
         "quote.USD.percent_change_24h",
         "quote.USD.percent_change_7d",
         "RSI",
+        "MACD_histogram",
+        "BB_width",
     ]
     df[features_to_normalize] = scaler.fit_transform(df[features_to_normalize])
+
+    return df
+
+
+def detect_anomalies(df):
+    # Select features for anomaly detection
+    features = [
+        "market_dominance",
+        "volume_stability",
+        "price_stability",
+        "quote.USD.percent_change_24h",
+        "quote.USD.percent_change_7d",
+        "RSI",
+        "MACD_histogram",
+        "BB_width",
+    ]
+
+    # Create a SimpleImputer, modify strategy suitably.
+    imputer = SimpleImputer(strategy="mean")
+
+    # Fit and transform the data
+    X = imputer.fit_transform(df[features])
+
+    # Initialize and fit the Isolation Forest
+    iso_forest = IsolationForest(contamination=0.1, random_state=42)
+    df["anomaly"] = iso_forest.fit_predict(X)
 
     return df
 
@@ -114,17 +158,22 @@ def score_currencies(df):
     # Apply improvements
     df = improve_promising_currency_code(df)
 
+    # Detect anomalies
+    df = detect_anomalies(df)
+
     # Calculate composite score
     df["promise_score"] = (
-        df["market_dominance"] * 0.2
-        + (1 - df["volume_stability"]) * 0.15
-        + (1 - df["price_stability"]) * 0.15
+        df["market_dominance"] * 0.15
+        + (1 - df["volume_stability"]) * 0.1
+        + (1 - df["price_stability"]) * 0.1
         + df["quote.USD.percent_change_24h"] * 0.1
         + df["quote.USD.percent_change_7d"] * 0.1
         + (df["RSI"] - 50).abs() / 50 * 0.1
-        + df["uptrend"] * 0.1
-        + df["golden_cross"] * 0.1
-        + df["flag_severity"] * 0.1  # Include flag severity in the score
+        + df["uptrend"] * 0.05
+        + df["golden_cross"] * 0.05
+        + df["MACD_histogram"] * 0.1
+        + df["BB_width"] * 0.05
+        + df["flag_severity"] * 0.1
     )
 
     # Penalize currencies with too many negative flags
@@ -135,6 +184,11 @@ def score_currencies(df):
     # Bonus for currencies with no negative flags
     df["promise_score"] = np.where(
         df["negative_flags"] == 0, df["promise_score"] * 1.2, df["promise_score"]
+    )
+
+    # Penalize anomalies
+    df["promise_score"] = np.where(
+        df["anomaly"] == -1, df["promise_score"] * 0.8, df["promise_score"]
     )
 
     return df
@@ -169,6 +223,8 @@ def identify_promising_currencies(raw_data_path):
         "uptrend",
         "golden_cross",
         "RSI",
+        "MACD_histogram",
+        "BB_width",
         "quote.USD.price",
         "quote.USD.market_cap",
         "quote.USD.volume_24h",
@@ -181,6 +237,7 @@ def identify_promising_currencies(raw_data_path):
         "negative_flags",
         "flag_severity",
         "time_decay",
+        "anomaly",
         "timestamp",
     ] + [col for col in promising_currencies.columns if col.endswith("_flag")]
 
@@ -196,19 +253,12 @@ def performers():
     promising_currencies = identify_promising_currencies(raw_data_path)
 
     # Save the full results to CSV
-    if not os.path.isfile(
+    output_path = (
         rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv"
-    ):
-        promising_currencies.to_csv(
-            rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv",
-            header="column_names",
-        )
-    else:
-        promising_currencies.to_csv(
-            rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv",
-            mode="a",
-            header=False,
-        )
+    )
+    promising_currencies.to_csv(
+        output_path, mode="a", header=not os.path.exists(output_path), index=False
+    )
 
     # Get the names of the top 5 performing currencies
     top_5_performers = promising_currencies["name"].head(5).tolist()

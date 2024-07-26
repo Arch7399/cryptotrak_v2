@@ -7,7 +7,16 @@ def price_spikes_and_volume_surges(df, price_spike_threshold, volume_surge_thres
     df_volume_surges = df[df["quote.USD.volume_change_24h"] >= volume_surge_threshold]
 
     df_combined = pd.merge(
-        df_spikes[["symbol", "name", "quote.USD.percent_change_24h"]],
+        df_spikes[
+            [
+                "symbol",
+                "slug",
+                "name",
+                "quote.USD.percent_change_24h",
+                "quote.USD.price",
+                "timestamp",
+            ]
+        ],
         df_volume_surges[["symbol", "quote.USD.volume_change_24h"]],
         on="symbol",
     )
@@ -33,10 +42,13 @@ def bullish_momentum_breakouts(df, p_s_t, v_s_t, p_w, v_w):
     return df_sorted[
         [
             "name",
+            "slug",
             "symbol",
             "spike_surge_score",
+            "quote.USD.price",
             "quote.USD.percent_change_24h",
             "quote.USD.volume_change_24h",
+            "timestamp",
         ]
     ]
 
@@ -46,7 +58,16 @@ def overbought_conditions(df, price_spike_threshold):
     df_spikes = df[df["quote.USD.percent_change_24h"] > price_spike_threshold]
     df_high_rsi = df[df["RSI"] > 70]
 
-    df_spikes = df_spikes[["symbol", "name", "quote.USD.percent_change_24h"]]
+    df_spikes = df_spikes[
+        [
+            "symbol",
+            "slug",
+            "name",
+            "quote.USD.percent_change_24h",
+            "quote.USD.price",
+            "timestamp",
+        ]
+    ]
     df_high_rsi = df_high_rsi[["symbol", "RSI"]]
 
     df_combined = df_spikes.merge(df_high_rsi, how="inner", on="symbol")
@@ -56,7 +77,16 @@ def overbought_conditions(df, price_spike_threshold):
     df_combined = df_combined.sort_values(by="overbought_score", ascending=False)
 
     return df_combined[
-        ["name", "symbol", "overbought_score", "quote.USD.percent_change_24h", "RSI"]
+        [
+            "name",
+            "slug",
+            "symbol",
+            "overbought_score",
+            "quote.USD.percent_change_24h",
+            "quote.USD.price",
+            "RSI",
+            "timestamp",
+        ]
     ]
 
 
@@ -79,11 +109,14 @@ def pump_and_dump_schemes(df, pump_threshold, dump_threshold, volume_surge_thres
     return df_combined[
         [
             "name",
+            "slug",
             "symbol",
             "pump_dump_score",
+            "quote.USD.price",
             "quote.USD.percent_change_24h_pump",
             "quote.USD.percent_change_1h_dump",
             "quote.USD.volume_change_24h",
+            "timestamp",
         ]
     ]
 
@@ -92,7 +125,16 @@ def reversal_opportunities(df, crash_threshold, low_rsi_threshold):
     df_crashes = df[df["quote.USD.percent_change_24h"] < crash_threshold]
     df_low_rsi = df[df["RSI"] < low_rsi_threshold]
 
-    df_crashes = df_crashes[["symbol", "name", "quote.USD.percent_change_24h"]]
+    df_crashes = df_crashes[
+        [
+            "symbol",
+            "slug",
+            "name",
+            "quote.USD.price",
+            "quote.USD.percent_change_24h",
+            "timestamp",
+        ]
+    ]
     df_low_rsi = df_low_rsi[["symbol", "RSI"]]
 
     df_combined = df_crashes.merge(df_low_rsi, on="symbol")
@@ -104,7 +146,16 @@ def reversal_opportunities(df, crash_threshold, low_rsi_threshold):
     df_combined = df_combined.sort_values(by="reversal_score", ascending=False)
 
     return df_combined[
-        ["name", "symbol", "reversal_score", "quote.USD.percent_change_24h", "RSI"]
+        [
+            "name",
+            "slug",
+            "symbol",
+            "reversal_score",
+            "quote.USD.price",
+            "quote.USD.percent_change_24h",
+            "RSI",
+            "timestamp",
+        ]
     ]
 
 
@@ -135,22 +186,32 @@ def false_valuation_market_manipulation(df, lower_threshold, upper_threshold):
         lambda x: 1 if lower_threshold < x < upper_threshold else 0
     )
 
-    return df_sorted[["name", "symbol", "false_valuation_score", "efficiency_flag"]]
+    return df_sorted[
+        [
+            "name",
+            "slug",
+            "symbol",
+            "quote.USD.price",
+            "false_valuation_score",
+            "efficiency_flag",
+            "timestamp",
+        ]
+    ]
 
 
 def apply_tandem_filters(df):
     return {
-        "bullish": bullish_momentum_breakouts(
+        "Bullish": bullish_momentum_breakouts(
             df, Config.p_s_t, Config.v_s_t, Config.p_w, Config.v_w
         ),
-        "overbought": overbought_conditions(df, Config.o_p_s_t),
-        "pump_and_dump": pump_and_dump_schemes(
+        "Overbought": overbought_conditions(df, Config.o_p_s_t),
+        "PumpAndDump": pump_and_dump_schemes(
             df, Config.p_t, Config.d_t, Config.p_d_v_s_t
         ),
-        "reversal_opportunities": reversal_opportunities(
+        "ReversalOpportunities": reversal_opportunities(
             df, Config.c_t, Config.l_rsi_t
         ),
-        "false_valuation": false_valuation_market_manipulation(
+        "FalseValuation": false_valuation_market_manipulation(
             df, Config.l_t, Config.u_t
         ),
     }
