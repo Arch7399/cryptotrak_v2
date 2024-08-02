@@ -52,6 +52,9 @@ def calculate_latest_price_difference(df, diff_csv_path, df2):
     latest_timestamp = pivot_df2.columns[1]
     diff_df.name = latest_timestamp
 
+    # Convert timestamp columns to strings before saving
+    pivot_df2.columns = [dt.strftime('%Y-%m-%dT%H:%M:%S') for dt in pd.to_datetime(pivot_df2.columns)]
+
     # If the diff CSV file already exists, append the new column to it
     if existing_diff_df is not None:
         # Merge the new diff column with the existing CSV
@@ -59,6 +62,8 @@ def calculate_latest_price_difference(df, diff_csv_path, df2):
     else:
         # If the file doesn't exist, create a new one with the current diff column
         combined_df = pd.DataFrame(diff_df)
+
+    
 
     # Save the updated DataFrame to the CSV (overwrite with new data)
     combined_df.to_csv(diff_csv_path, mode="w", header=True, index=True)
