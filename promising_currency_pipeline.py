@@ -10,7 +10,7 @@ from pipeline_filters import apply_filters
 from pipeline_mixed_filters import apply_tandem_filters
 from datetime import datetime, timedelta
 from latest_data import filter_latest
-
+import talib
 
 def prepare_data(raw_data_path):
     df = pd.read_csv(raw_data_path)
@@ -56,58 +56,21 @@ def calculate_flag_severity(df):
 
 def improve_promising_currency_code(df):
     # Add more relevant features
-    df["market_dominance"] = (
-        df["quote.USD.market_cap"] / df["quote.USD.market_cap"].sum()
-    )
-    df["volume_stability"] = (
-        df["quote.USD.volume_24h"].rolling(window=7).std()
-        / df["quote.USD.volume_24h"].rolling(window=7).mean()
-    )
-    df["price_stability"] = (
-        df["quote.USD.price"].rolling(window=7).std()
-        / df["quote.USD.price"].rolling(window=7).mean()
-    )
-
-    # Calculate technical indicators
-    df["SMA_50"] = df["quote.USD.price"].rolling(window=50).mean()
-    df["SMA_200"] = df["quote.USD.price"].rolling(window=200).mean()
-    df["EMA_20"] = df["quote.USD.price"].ewm(span=20, adjust=False).mean()
+    df["market_dominance"] = df["quote.USD.market_cap"] / df["quote.USD.market_cap"].sum()
+    df["volume_stability"] = df["quote.USD.volume_24h"].rolling(window=7).std() / df["quote.USD.volume_24h"].rolling(window=7).mean()
+    df["price_stability"] = df["quote.USD.price"].rolling(window=7).std() / df["quote.USD.price"].rolling(window=7).mean()
 
     # Create trend indicators
     df["uptrend"] = (df["SMA_50"] > df["SMA_200"]).astype(int)
-    df["golden_cross"] = (
-        (df["SMA_50"] > df["SMA_200"])
-        & (df["SMA_50"].shift(1) <= df["SMA_200"].shift(1))
-    ).astype(int)
+    df["golden_cross"] = ((df["SMA_50"] > df["SMA_200"]) & (df["SMA_50"].shift(1) <= df["SMA_200"].shift(1))).astype(int)
 
-    # Add MACD
-    df["MACD"] = (
-        df["quote.USD.price"].ewm(span=12, adjust=False).mean()
-        - df["quote.USD.price"].ewm(span=26, adjust=False).mean()
-    )
-    df["MACD_signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-    df["MACD_histogram"] = df["MACD"] - df["MACD_signal"]
+    # Modified ADX calculation
+    close = df["quote.USD.price"].values
+    
+    df["ADX"] = talib.ADX(close, close, close, timeperiod=14)  # This isn't ideal but will give a trend strength indication
 
-    # Add Bollinger Bands
-    df["BB_middle"] = df["quote.USD.price"].rolling(window=20).mean()
-    df["BB_std"] = df["quote.USD.price"].rolling(window=20).std()
-    df["BB_upper"] = df["BB_middle"] + (df["BB_std"] * 2)
-    df["BB_lower"] = df["BB_middle"] - (df["BB_std"] * 2)
-    df["BB_width"] = (df["BB_upper"] - df["BB_lower"]) / df["BB_middle"]
-
-    # Normalize features
-    scaler = MinMaxScaler()
-    features_to_normalize = [
-        "market_dominance",
-        "volume_stability",
-        "price_stability",
-        "quote.USD.percent_change_24h",
-        "quote.USD.percent_change_7d",
-        "RSI",
-        "MACD_histogram",
-        "BB_width",
-    ]
-    df[features_to_normalize] = scaler.fit_transform(df[features_to_normalize])
+    # Add OBV (On-Balance Volume)
+    df["OBV"] = talib.OBV(close, df["quote.USD.volume_24h"].values)
 
     return df
 
@@ -121,11 +84,21 @@ def detect_anomalies(df):
         "quote.USD.percent_change_24h",
         "quote.USD.percent_change_7d",
         "RSI",
-        "MACD_histogram",
+        "MACD_hist",
         "BB_width",
     ]
+    
+    # Verify all features exist in the dataframe
+    available_features = [f for f in features if f in df.columns]
+    missing_features = set(features) - set(available_features)
+    
+    if missing_features:
+        print(f"Warning: The following features are missing and will be excluded: {missing_features}")
+    
+    # Use only available features
+    features = available_features
 
-    # Create a SimpleImputer, modify strategy suitably.
+    # Create a SimpleImputer
     imputer = SimpleImputer(strategy="mean")
 
     # Fit and transform the data
@@ -157,39 +130,35 @@ def score_currencies(df):
 
     # Apply improvements
     df = improve_promising_currency_code(df)
-
+    
     # Detect anomalies
     df = detect_anomalies(df)
 
     # Calculate composite score
     df["promise_score"] = (
-        df["market_dominance"] * 0.15
-        + (1 - df["volume_stability"]) * 0.1
-        + (1 - df["price_stability"]) * 0.1
-        + df["quote.USD.percent_change_24h"] * 0.1
-        + df["quote.USD.percent_change_7d"] * 0.1
-        + (df["RSI"] - 50).abs() / 50 * 0.1
+        df["market_dominance"] * 0.10
+        + (1 - df["volume_stability"]) * 0.05
+        + (1 - df["price_stability"]) * 0.05
+        + df["quote.USD.percent_change_24h"] * 0.10
+        + df["quote.USD.percent_change_7d"] * 0.10
+        + (df["RSI"] - 50).abs() / 50 * 0.10
         + df["uptrend"] * 0.05
         + df["golden_cross"] * 0.05
-        + df["MACD_histogram"] * 0.1
+        + df["MACD_hist"] * 0.10
         + df["BB_width"] * 0.05
-        + df["flag_severity"] * 0.1
+        + df["ADX"] / 100 * 0.10  # ADX ranges from 0 to 100
+        + df["OBV"].pct_change() * 0.05  # OBV momentum
+        + df["flag_severity"] * 0.10
     )
 
     # Penalize currencies with too many negative flags
-    df["promise_score"] = np.where(
-        df["negative_flags"] > 3, df["promise_score"] * 0.5, df["promise_score"]
-    )
+    df["promise_score"] = np.where(df["negative_flags"] > 3, df["promise_score"] * 0.5, df["promise_score"])
 
     # Bonus for currencies with no negative flags
-    df["promise_score"] = np.where(
-        df["negative_flags"] == 0, df["promise_score"] * 1.2, df["promise_score"]
-    )
+    df["promise_score"] = np.where(df["negative_flags"] == 0, df["promise_score"] * 1.2, df["promise_score"])
 
     # Penalize anomalies
-    df["promise_score"] = np.where(
-        df["anomaly"] == -1, df["promise_score"] * 0.8, df["promise_score"]
-    )
+    df["promise_score"] = np.where(df["anomaly"] == -1, df["promise_score"] * 0.8, df["promise_score"])
 
     return df
 
@@ -223,7 +192,7 @@ def identify_promising_currencies(raw_data_path):
         "uptrend",
         "golden_cross",
         "RSI",
-        "MACD_histogram",
+        "MACD_hist",
         "BB_width",
         "quote.USD.price",
         "quote.USD.market_cap",
@@ -251,6 +220,8 @@ def performers():
 
     # Identify promising currencies
     promising_currencies = identify_promising_currencies(raw_data_path)
+
+    promising_currencies["timestamp"] = promising_currencies["timestamp"].dt.strftime('%Y-%m-%dT%H:%M:%S')
 
     # Save the full results to CSV
     output_path = (
