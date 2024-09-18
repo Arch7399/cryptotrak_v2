@@ -1,121 +1,223 @@
 # Cryptocurrency Analyzer
 
-This project is an upgraded cryptocurrency analysis framework designed to identify promising currencies using multiple filters like price momentum, volume surges, liquidity, RSI, pump-and-dump detection, and market cap-to-volume discrepancies. The framework includes additional features such as **sensitivity analysis**, **historical data analysis**.
+This project is an advanced cryptocurrency analysis framework designed to identify promising trading opportunities using sophisticated technical analysis, market metrics, and multiple filtering strategies. The framework combines traditional technical indicators with custom metrics for comprehensive market analysis, anomaly detection, and backtesting capabilities.
 
+## Core Features
 
-## Features
-
-- **Customizable Filters**:
-  - Detects **price spikes** and **volume surges** using statistical Z-scores.
-  - Identifies **bullish momentum breakouts** and **reversal opportunities**.
-  - Flags **price crashes**, **pump-and-dump schemes**, and **market cap-volume discrepancies**.
-  - Filters for **low liquidity** and **false valuations**.
-
+### Technical Analysis
 - **Advanced Technical Indicators**:
-  - Calculates technical indicators such as **Simple Moving Averages (SMA)** (50 and 200 periods), **Exponential Moving Average (EMA)** (20-period), and trend-based signals like **uptrends** and **golden crosses**.
-  - Detects **market dominance** based on market cap and **stability** of volume and price using rolling statistics.
+  - Moving Averages: SMA (50, 200), EMA (9, 20)
+  - Momentum Indicators: MACD, RSI, Stochastic Oscillator, Rate of Change (ROC)
+  - Volume Indicators: On Balance Volume (OBV), Accumulation/Distribution (A/D), Chaikin Money Flow (CMF)
+  - Volatility Measures: Average True Range (ATR), Bollinger Bands Width
+  - Trend Strength Indicators: ADX (Average Directional Index)
+  - Custom composite indicators for trend strength and market momentum
 
-- **Composite Scoring System**:
-  - A robust **promise score** that combines market dominance, price and volume stability, RSI, trend indicators, and a flag-based severity system for positive and negative signals.
-  - Custom weighting for each factor influencing the promise score, including **RSI deviation**, **uptrend indicators**, **z-score** and **golden crosses**.
-  - Penalizes currencies with an excess of negative flags (e.g., too many pump flags or crashes), while rewarding those with no negative flags.
+### Market Analysis
+- **Market Dominance Metrics**:
+  - Market cap relative to total market
+  - Volume dominance analysis
+  - Volume-to-market cap ratio assessment
+  - Market stability index
+  - Combined market dominance scoring
 
-- **Time Decay Weighting**:
-  - The model incorporates **time decay** to weigh more recent data more heavily, ensuring that currencies showing recent promising behavior are prioritized.
+- **Volume Stability Analysis**:
+  - Volume consistency tracking (7-day rolling window)
+  - Volume-to-market cap ratio stability
+  - Volume-price correlation analysis
+  - OBV trend analysis
+  - Time-decay weighted volume analysis
 
-- **Normalization**:
-  - Applies **MinMaxScaler** normalization to features like market dominance, price and volume stability, and RSI for more accurate scoring and comparison.
+### Advanced Filtering Systems
 
-- **Flag Severity Calculation**:
-  - The system calculates a **flag severity score**, quantifying how many positive vs. negative flags a currency has. This directly impacts the final score, ensuring balanced analysis between positive and negative signals.
+1. **Price Movement Detection**:
+   - Statistical spike and crash detection using Z-scores
+   - Golden cross detection (SMA 50 crossing above SMA 200)
+   - Multi-timeframe momentum analysis
+   - Price pattern recognition
+   - Price-to-ATR ratio analysis
 
-- **CSV Data Export**:
-  - Outputs the top promising currencies to a CSV file for further analysis, along with all relevant metrics like market dominance, price, volume, supply, and flag data.
-  - Provides an easy-to-read ranked list of the top 5 performing currencies based on the promise score.
+2. **Volume Analysis**:
+   - Sudden volume surge detection
+   - Volume-price relationship analysis
+   - OBV momentum tracking
+   - Volume consistency scoring
+   - Volume dominance thresholds
 
-- **Extensible and Modular**:
-  - Designed to be easily extensible. You can add new filters, indicators, or modify the scoring algorithm with minimal changes to the code.
+3. **Market Efficiency Filters**:
+   - Liquidity assessment using ATR and volatility
+   - Market stability index integration
+   - Volume/Market cap relationship optimization (0.1 to 0.5 ratio)
+   - Price efficiency metrics
+   - Anomaly detection using Isolation Forest
 
+4. **Risk Assessment**:
+   - Volatility penalty scoring
+   - Volume consistency bonus calculations
+   - Market cap/volume ratio adjustments
+   - Negative flag aggregation
+   - Anomaly impact assessment
 
-## Further Ongoing Upgrades
+### Backtesting System
 
-- **Backtesting**:
-  - The backtesting framework to evaluate how different threshold combinations would perform using historical data, helping to understand the effectiveness of filters over time.
+The framework now includes a sophisticated backtesting module with the following capabilities:
 
-- **Machine Learning Optimization**:
-  - Using techniques like grid search or genetic algorithms, to optimize the thresholds based on historical performance.
+1. **Enhanced Risk Management**:
+   - Dynamic position sizing based on volatility
+   - Multi-factor risk assessment
+   - Maximum drawdown control
+   - Position correlation analysis
+   - Advanced fee modeling
 
-- **UI Development**:
-  - For better visualization of the analysis results.
+2. **Performance Metrics**:
+   - Sharpe Ratio (rolling and overall)
+   - Maximum Drawdown tracking
+   - Win Rate calculation
+   - Profit Factor analysis
+   - Risk-adjusted returns
+   - Average win/loss metrics
+   - Return on initial equity
+   - Position-level analytics
 
+3. **Position Management**:
+   - Automated entry/exit execution
+   - Dynamic stop-loss adjustment
+   - Take-profit optimization
+   - Position aging analysis
+   - Maximum position limits
+   - Volume-based position sizing
 
-## Main Components
+4. **Visualization Tools**:
+   - Equity curves (realized and unrealized)
+   - Drawdown visualization
+   - Rolling Sharpe Ratio plots
+   - Cumulative returns analysis
+   - Trade distribution charts
+   - Performance metrics dashboard
 
-- `config.py`: 
-  - Stores all threshold values and allows customizable parameters for filters (e.g., `price_spike_threshold`, `volume_surge_threshold`).
-  - Shortened alias names (e.g., `p_s_t`, `v_s_t`) for easier reference when passing variables into functions.
-  
-- `promising_currency_pipeline.py`:
-  - The core module responsible for applying filters to the cryptocurrency data and scoring each currency based on defined metrics.
+### Scoring System
+- **Composite Scoring Algorithm**:
+  - Market dominance (8%)
+  - Volume stability (4%)
+  - Price stability (4%)
+  - Short-term price changes (8% each for 24h and 7d)
+  - RSI divergence (8%)
+  - Trend indicators (4% each for uptrend and golden cross)
+  - MACD histogram (8%)
+  - Bollinger Band width (4%)
+  - ADX strength (8%)
+  - OBV momentum (4%)
+  - Additional technical indicators (2-4% each)
+  - Penalty and bonus modifiers based on:
+    - Volatility levels
+    - Volume consistency
+    - Market cap/volume relationships
+    - Negative flags count
+    - Anomaly detection results
 
-- `identify_promising_currencies.py`:
-  - Identifies and scores promising cryptocurrencies based on price momentum, volume momentum, RSI, and other key metrics.
-
-## Key Methods
-
-- `sensitivity_analysis()`: Evaluates how different threshold values perform over a range of values and selects the best performing one.
-
-- `identify_promising_currencies()`: Processes raw data, applies filters, and identifies top-performing cryptocurrencies.
-
-## Usage
+## Installation and Setup
 
 1. **Clone the repository**:
    ```sh
-    git clone https://github.com/Arch7399/cryptotrak.git
-    cd cryptotrak
-    ```
-
-2. **Install Dependencies**:
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-3. **Configuration**:
-    Create and Update your `.env` file with the following options:
-    
-    - **API_KEY**: Your API key for fetching cryptocurrency data.
-    - **SENDER_EMAIL**: The email address from which notifications will be sent.
-    - **PASSWORD**: Sender mail password
-    - **USER**: User name for .csv path file
-    - **RECIPIENT_EMAIL**: The email address to receive notifications.
-    
-    Example `.env`:
-    
-    ```python
-    API_KEY=vvvvvvvv-wwww-xxxx-yyyy-zzzzzzzzzzzz
-    SENDER_EMAIL=johny@gmail.com
-    USER=ricky
-    RECIPIENT_EMAIL=sam@gmail.com
-    ```
-
-4. **Create file paths**:
-    Create an "Analysis/Tandem" folder structure in your desktop for analysis dump files from output. Or any other location of your choice provided you modify the associated paths in depending .py files.
-
-4. **Run the application**:
-    ```sh
-    python main.py
-    ```
-
-## 🤝 Contributing
-
-Contributions are welcome for further development of this project! Follow these steps to contribute:
-    
-1. **Fork the repository on GitHub.**
-2. **Clone the forked repository to your local machine.**
-   ```sh
    git clone https://github.com/Arch7399/cryptotrak.git
    cd cryptotrak
+   ```
+
+2. **Install Dependencies**:
+   ```sh
+   pip install -r requirements.txt
+   ```
+
+3. **Configuration**:
+   Create and update your `.env` file with the following:
+   ```python
+   API_KEY=your-api-key-here
+   SENDER_EMAIL=your-email@example.com
+   USER=your-username
+   RECIPIENT_EMAIL=recipient@example.com
+   ```
+
+4. **Setup Analysis Directory**:
+   Create an "Analysis" folder and a "price_difference_dump" folder in your desktop or modify the path in the configuration.
+
+## Usage
+
+### Basic Analysis
+```python
+python main.py
+```
+
+The system will analyze cryptocurrency data and alert with the top 5 performing currencies based on the comprehensive scoring system.
+
+### Backtesting
+```python
+python backtesting_v1.py
+```
+
+This will run the backtesting system with the following capabilities:
+- Historical performance analysis
+- Risk management evaluation
+- Trading strategy validation
+- Performance visualization
+
+### Advanced Configuration
+The system supports customization of various parameters through the configuration:
+- Z-score thresholds for price and volume analysis
+- Time decay half-life (default: 6 hours)
+- Isolation Forest contamination rate (default: 0.1)
+- Scoring weights for different metrics
+- Rolling window periods for stability calculations
+- Risk management parameters
+- Backtesting parameters
+
+## Module Structure
+
+- `promising_currency_pipeline.py`: Core analysis pipeline
+  - Data preparation and filtering
+  - Technical indicator calculation
+  - Anomaly detection
+  - Comprehensive scoring system
+  - Top performer identification
+
+- `data_processing.py`: Data processing and technical analysis
+  - Market dominance calculation
+  - Volume stability analysis
+  - Technical indicator computation
+  - Trend analysis
+
+- `pipeline_filters.py`: Primary filtering mechanisms
+  - Price movement detection
+  - Volume analysis
+  - Market efficiency assessment
+  - Risk evaluation
+
+- `pipeline_mixed_filters.py`: Advanced filtering combinations
+  - Price-volume correlation analysis
+  - Trend strength assessment
+  - Reversal opportunity detection
+  - Momentum divergence analysis
+
+- `backtesting.py`: Backtesting and performance analysis
+  - Historical simulation
+  - Risk management system
+  - Performance metrics calculation
+  - Results visualization
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository
+2. Create a feature branch
+   ```sh
    git checkout -b feature/your-feature
+   ```
+3. Commit your changes
+   ```sh
    git commit -am 'Add some feature'
+   ```
+4. Push to the branch
+   ```sh
    git push origin feature/your-feature
-3. Submit a pull request on GitHub
+   ```
+5. Submit a Pull Request
