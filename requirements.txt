@@ -1,7 +1,9 @@
 pandas
+numpy
 seaborn
 matplotlib
 requests
 python-dotenv
 scipy
 scikit-learn
+talib
