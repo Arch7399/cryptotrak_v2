@@ -409,7 +409,7 @@ class PredictionBacktester:
         return recent_predictions["slug"].unique().tolist()
 
     def create_position(
-        self, row: pd.Series, timestamp: pd.Timestamp
+        self, row: pd.Series, timestamp: pd.Timestamp, next_timestamp: pd.Timestamp
     ) -> Optional[EnhancedPosition]:
         try:
             price = row["quote.USD.price"]
