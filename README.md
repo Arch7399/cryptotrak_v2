@@ -119,8 +119,8 @@ The framework now includes a sophisticated backtesting module with the following
 
 1. **Clone the repository**:
    ```sh
-   git clone https://github.com/Arch7399/cryptotrak.git
-   cd cryptotrak
+   git clone https://github.com/Arch7399/cryptotrak_v2.git
+   cd cryptotrak_v2
    ```
 
 2. **Install Dependencies**:
