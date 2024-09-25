@@ -206,7 +206,7 @@ def identify_promising_currencies(raw_data_path):
 
     df_scored = score_currencies(df_tandem_filtered)
 
-    promising_currencies = df_scored.nlargest(20, "promise_score")
+    promising_currencies = df_scored.nlargest(50, "promise_score")
 
     return promising_currencies.sort_values("promise_score", ascending=False)
 
