@@ -10,6 +10,7 @@ from pipeline_filters import apply_filters
 from pipeline_mixed_filters import apply_tandem_filters
 from datetime import datetime, timedelta
 from latest_data import filter_latest
+from config import Config
 import talib
 
 
@@ -138,6 +139,7 @@ def score_currencies(df):
 
     df = detect_anomalies(df)
 
+    # Initial promise score calculation
     df["promise_score"] = (
         df["market_dominance"] * 0.08
         + (1 - df["volume_stability"]) * 0.04
@@ -151,48 +153,113 @@ def score_currencies(df):
         + df["BB_width"] * 0.04
         + df["ADX"] / 100 * 0.08
         + df["OBV"].pct_change() * 0.04
-        + df["flag_severity"] * 0.08
+        + df["flag_severity"] * 0.12  # Increased weight for flag severity
         + df["CMF"] * 0.02
         + df["market_stability_index"] * 0.02
         + df["vol_price_correlation_normalized"] * 0.02
-        + np.where(df["rsi_high_flag"] == 1, -0.02, 0)
-        + np.where(df["rsi_low_flag"] == 1, 0.02, 0)
-        + df["momentum_divergence"] * -0.02
         + df["price_to_ATR_ratio"].clip(lower=0, upper=1) * 0.02
-        + np.where(df["reversal_opportunity_flag"] == 1, 0.02, 0)
     )
 
+    # Apply initial penalties
     volatility_penalty = np.where(
-        df["volatility_score"] > 0.7,
-        df["promise_score"] * (1 - df["volatility_score"] * 0.3),
+        df["volatility_score"] > 0.5,
+        df["promise_score"] * (1 - df["volatility_score"] * 0.5),
         df["promise_score"],
     )
     df["promise_score"] = volatility_penalty
 
-    volume_consistency_bonus = np.where(
+    volume_adjustment = np.where(
         (df["volume_stability"] < 0.3) & (df["volume_dominance"] > 0.01),
         df["promise_score"] * 1.1,
-        df["promise_score"],
+        df["promise_score"] * (0.9 - df["volume_stability"] * 0.2),
     )
-    df["promise_score"] = volume_consistency_bonus
+    df["promise_score"] = volume_adjustment
 
     mcap_volume_adjustment = np.where(
         (df["vol_mcap_ratio"] > 0.1) & (df["vol_mcap_ratio"] < 0.5),
         df["promise_score"] * 1.05,
-        df["promise_score"],
+        df["promise_score"] * 0.85,
     )
     df["promise_score"] = mcap_volume_adjustment
 
+    # Handle any negative scores
+    df["promise_score"] = df["promise_score"].clip(lower=0)
+
+    # # First scaling to 0-100
+    # scaler = MinMaxScaler(feature_range=(0, 100))
+    # df["promise_score"] = scaler.fit_transform(df[["promise_score"]])
+
+    # Enhanced flag-based penalties AFTER scaling
+    def calculate_flag_based_penalty(row):
+        base_score = row["promise_score"]
+
+        # Calculate severity ratio (positive to negative flags)
+        severity_ratio = (row["positive_flags"] + 1) / (row["negative_flags"] + 1)
+
+        # Define penalty based on negative flags count and severity
+        if row["negative_flags"] == 0:
+            # Bonus for positive flags when no negative flags
+            bonus = min(row["positive_flags"] * 5, 20)  # Up to 20% bonus
+            return min(base_score * (1 + bonus / 100), 100)
+
+        elif row["negative_flags"] == 1:
+            # Less severe penalty if balanced by positive flags
+            penalty_factor = 0.7 if severity_ratio > 1 else 0.6
+            return base_score * penalty_factor
+
+        elif row["negative_flags"] == 2:
+            # Moderate penalty, slightly reduced if many positive flags
+            penalty_factor = 0.4 if severity_ratio > 1.5 else 0.3
+            return base_score * penalty_factor
+
+        else:  # 3+ negative flags
+            # Severe penalty, very slightly reduced if exceptional positive flags
+            penalty_factor = 0.2 if severity_ratio > 2 else 0.1
+            return base_score * penalty_factor
+
+    df["promise_score"] = df.apply(calculate_flag_based_penalty, axis=1)
+
+    # Specific flag type penalties
+    def apply_specific_flag_penalties(row):
+        score = row["promise_score"]
+
+        # Severe negative flags (additional penalties)
+        if row["pump_flag"] or row["dump_flag"]:
+            score *= 0.7  # 30% reduction for pump/dump flags
+
+        if row["market_cap_volume_discrepancy_flag"]:
+            score *= 0.8  # 20% reduction for market cap discrepancy
+
+        if row["false_valuation_flag"]:
+            score *= 0.75  # 25% reduction for false valuation
+
+        # Positive flag bonuses (only if negative flags <= 1)
+        if row["negative_flags"] <= 1:
+            if row["bullish_momentum_breakout_flag"]:
+                score = min(score * 1.1, 100)  # 10% bonus
+
+            if row["reversal_opportunity_flag"]:
+                score = min(score * 1.05, 100)  # 5% bonus
+
+        return score
+
+    df["promise_score"] = df.apply(apply_specific_flag_penalties, axis=1)
+
+    # Final adjustments
     df["promise_score"] = np.where(
-        df["negative_flags"] > 3, df["promise_score"] * 0.5, df["promise_score"]
-    )
-    df["promise_score"] = np.where(
-        df["negative_flags"] == 0, df["promise_score"] * 1.2, df["promise_score"]
-    )
-    df["promise_score"] = np.where(
-        df["anomaly"] == -1, df["promise_score"] * 0.8, df["promise_score"]
+        df["anomaly"] == -1, df["promise_score"] * 0.6, df["promise_score"]
     )
 
+    df["promise_score"] = np.where(
+        (df["RSI"] > 80) | (df["RSI"] < 20),
+        df["promise_score"] * 0.75,
+        df["promise_score"],
+    )
+
+    # # Ensure final scores are within 0-100 range
+    # df["promise_score"] = df["promise_score"].clip(0, 100).round(2)
+
+    df = df[df["quote.USD.price"].between(Config.min_usd_price, Config.max_usd_price)]
     return df
 
 
@@ -206,7 +273,7 @@ def identify_promising_currencies(raw_data_path):
 
     df_scored = score_currencies(df_tandem_filtered)
 
-    promising_currencies = df_scored.nlargest(50, "promise_score")
+    promising_currencies = df_scored.nlargest(30, "promise_score")
 
     return promising_currencies.sort_values("promise_score", ascending=False)
 
@@ -216,9 +283,9 @@ def performers():
 
     promising_currencies = identify_promising_currencies(raw_data_path)
 
-    promising_currencies["timestamp"] = promising_currencies["timestamp"].dt.strftime(
-        "%Y-%m-%dT%H:%M:%S"
-    )
+    # promising_currencies["timestamp"] = promising_currencies["timestamp"].dt.strftime(
+    #     "%Y-%m-%dT%H:%M:%S"
+    # )
 
     output_path = (
         rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv"
