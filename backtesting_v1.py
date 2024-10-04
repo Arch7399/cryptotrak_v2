@@ -2,11 +2,13 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
+from config import Config
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import os
 from datetime import datetime, timedelta
 import math
+
 
 @dataclass
 class EnhancedPosition:
@@ -19,9 +21,9 @@ class EnhancedPosition:
     currency: str
     entry_timestamp: pd.Timestamp
     prediction_timestamp: pd.Timestamp
-    highest_price: float = field(default=0.0)  
-    current_tp_level: int = field(default=0)  
-    original_position_size: float = field(default=0.0)  
+    highest_price: float = field(default=0.0)
+    current_tp_level: int = field(default=0)
+    original_position_size: float = field(default=0.0)
 
     def __post_init__(self):
         self.highest_price = self.entry_price
@@ -38,7 +40,11 @@ class EnhancedRiskManagement:
         fee_rate: float = 0.001,
         max_positions: int = 100,
         trailing_stop_percentage: float = 0.02,  # modify trailing stops here
-        take_profit_levels: List[float] = [1.5, 2.0, 2.5],  # modify take profit levels here
+        take_profit_levels: List[float] = [
+            1.5,
+            2.0,
+            2.5,
+        ],  # modify take profit levels here
         position_size_reduction: float = 0.5,  # Reduce position by 50% at each TP
     ):
         self.current_equity = initial_equity
@@ -55,35 +61,33 @@ class EnhancedRiskManagement:
 
         self.min_market_cap = 1000000
         self.min_daily_volume = 100000
-        self.max_volatility = 0.1 # adjust volatility max here
+        self.max_volatility = 0.1  # adjust volatility max here
         self.max_price_impact = 0.05
 
     def update_equity(self, pnl: float):
         self.current_equity += pnl
 
     def set_trailing_stop_loss(
-        self, 
-        entry_price: float, 
-        current_price: float, 
+        self,
+        entry_price: float,
+        current_price: float,
         current_stop_loss: float,
-        highest_price: float
+        highest_price: float,
     ) -> float:
         """
         Updates the trailing stop loss based on price movement.
         Returns the new stop loss price.
         """
         trailing_distance = entry_price * self.trailing_stop_percentage
-        
+
         # If price has moved up, move the stop loss up
         if current_price > highest_price:
-            highest_price = current_price  
+            highest_price = current_price
         new_stop_loss = highest_price - trailing_distance
         return max(new_stop_loss, current_stop_loss)
 
     def get_next_take_profit(
-        self, 
-        entry_price: float, 
-        current_tp_level: int
+        self, entry_price: float, current_tp_level: int
     ) -> Tuple[float, int]:
         """
         Returns the next take profit price and level index.
@@ -91,22 +95,22 @@ class EnhancedRiskManagement:
         """
         if current_tp_level >= len(self.take_profit_levels):
             return None, -1
-            
+
         tp_multiplier = self.take_profit_levels[current_tp_level]
         risk = entry_price * self.trailing_stop_percentage
         next_tp = entry_price + (risk * tp_multiplier)
-        
+
         return next_tp, current_tp_level + 1
 
     def calculate_partial_exit_size(
-        self, 
-        current_position_size: float, 
-        tp_level: int
+        self, current_position_size: float, tp_level: int
     ) -> float:
         """
         Calculates how much of the position to exit at current take profit level.
         """
-        exit_size = current_position_size * (self.position_size_reduction / (tp_level + 1))
+        exit_size = current_position_size * (
+            self.position_size_reduction / (tp_level + 1)
+        )
         return math.floor(exit_size)
 
     def calculate_position_size(
@@ -124,7 +128,6 @@ class EnhancedRiskManagement:
         ):
             return 0
 
-        
         risk_amount = min(
             self.current_equity * self.max_risk_per_trade, self.max_position_value * 0.2
         )
@@ -227,7 +230,6 @@ class BacktestVisualizer:
 
         trades_df["equity"] = equity_changes[1:]
 
-        
         trades_df["is_win"] = trades_df["return"] > 0
         trades_df["rolling_wins"] = (
             trades_df["is_win"].rolling(window=10, min_periods=1).sum()
@@ -274,63 +276,87 @@ class BacktestVisualizer:
             return summary
 
         # Set style and colors
-        plt.style.use('seaborn-v0_8-whitegrid')
+        plt.style.use("seaborn-v0_8-whitegrid")
         colors = {
-            'equity': '#1f77b4',      # Blue
-            'win_rate': '#2ca02c',    # Green
-            'hist': '#1f77b4',        # Blue
-            'returns': '#ff7f0e',     # Orange
-            'zero_line': '#d62728'    # Red
+            "equity": "#1f77b4",  # Blue
+            "win_rate": "#2ca02c",  # Green
+            "hist": "#1f77b4",  # Blue
+            "returns": "#ff7f0e",  # Orange
+            "zero_line": "#d62728",  # Red
         }
 
-        
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        fig.patch.set_facecolor('white')
+        fig.patch.set_facecolor("white")
 
         # Plot 1: Actual Equity Changes
         full_equity_timeline = [self.initial_equity] + trades_df["equity"].tolist()
         timestamps = [
             trades_df["exit_timestamp"].iloc[0] - pd.Timedelta(hours=5)
         ] + trades_df["exit_timestamp"].tolist()
-        axes[0, 0].plot(timestamps, full_equity_timeline, color=colors['equity'], linewidth=2)
-        axes[0, 0].set_title("Equity Changes Over Time", pad=20, fontsize=12, fontweight='bold')
+        axes[0, 0].plot(
+            timestamps, full_equity_timeline, color=colors["equity"], linewidth=2
+        )
+        axes[0, 0].set_title(
+            "Equity Changes Over Time", pad=20, fontsize=12, fontweight="bold"
+        )
         axes[0, 0].set_ylabel("Equity ($)", fontsize=10)
-        axes[0, 0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-        axes[0, 0].tick_params(axis='both', labelsize=9)
+        axes[0, 0].yaxis.set_major_formatter(
+            plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
+        )
+        axes[0, 0].tick_params(axis="both", labelsize=9)
 
         # Plot 2: Rolling Win Rate
-        axes[0, 1].plot(trades_df["exit_timestamp"], trades_df["rolling_win_rate"], 
-                        color=colors['win_rate'], linewidth=2)
-        axes[0, 1].set_title("Rolling Win Rate (10 trades)", pad=20, fontsize=12, fontweight='bold')
+        axes[0, 1].plot(
+            trades_df["exit_timestamp"],
+            trades_df["rolling_win_rate"],
+            color=colors["win_rate"],
+            linewidth=2,
+        )
+        axes[0, 1].set_title(
+            "Rolling Win Rate (10 trades)", pad=20, fontsize=12, fontweight="bold"
+        )
         axes[0, 1].set_ylabel("Win Rate", fontsize=10)
-        axes[0, 1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1%}'))
-        axes[0, 1].tick_params(axis='both', labelsize=9)
+        axes[0, 1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1%}"))
+        axes[0, 1].tick_params(axis="both", labelsize=9)
         axes[0, 1].set_ylim([0, max(trades_df["rolling_win_rate"]) * 1.1])
 
         # Plot 3: Return Distribution
-        trades_df["return"].hist(ax=axes[1, 0], bins=20, color=colors['hist'], 
-                            alpha=0.7, edgecolor='white')
-        axes[1, 0].set_title("Return Distribution ($)", pad=20, fontsize=12, fontweight='bold')
+        trades_df["return"].hist(
+            ax=axes[1, 0], bins=20, color=colors["hist"], alpha=0.7, edgecolor="white"
+        )
+        axes[1, 0].set_title(
+            "Return Distribution ($)", pad=20, fontsize=12, fontweight="bold"
+        )
         axes[1, 0].set_xlabel("Return ($)", fontsize=10)
         axes[1, 0].set_ylabel("Frequency", fontsize=10)
-        axes[1, 0].tick_params(axis='both', labelsize=9)
-        axes[1, 0].xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        axes[1, 0].tick_params(axis="both", labelsize=9)
+        axes[1, 0].xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
+        )
 
         # Plot 4: Trade Returns Over Time
-        axes[1, 1].plot(trades_df["exit_timestamp"], trades_df["return"], 
-                        color=colors['returns'], linewidth=2)
-        axes[1, 1].axhline(y=0, color=colors['zero_line'], linestyle='-', alpha=0.3)
-        axes[1, 1].set_title("Trade Returns Over Time", pad=20, fontsize=12, fontweight='bold')
+        axes[1, 1].plot(
+            trades_df["exit_timestamp"],
+            trades_df["return"],
+            color=colors["returns"],
+            linewidth=2,
+        )
+        axes[1, 1].axhline(y=0, color=colors["zero_line"], linestyle="-", alpha=0.3)
+        axes[1, 1].set_title(
+            "Trade Returns Over Time", pad=20, fontsize=12, fontweight="bold"
+        )
         axes[1, 1].set_ylabel("Return ($)", fontsize=10)
-        axes[1, 1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-        axes[1, 1].tick_params(axis='both', labelsize=9)
+        axes[1, 1].yaxis.set_major_formatter(
+            plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
+        )
+        axes[1, 1].tick_params(axis="both", labelsize=9)
 
         for ax in axes.flat:
-            if ax is not axes[1,0]:
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-            ax.tick_params(axis='x', rotation=0)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
+            if ax is not axes[1, 0]:
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+            ax.tick_params(axis="x", rotation=0)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
             ax.margins(x=0.02)
 
         plt.tight_layout(pad=5.0)
@@ -399,7 +425,9 @@ class PredictionBacktester:
             return self.timestamps[current_index + 1]
         return None
 
-    def process_positions(self, current_data: pd.DataFrame, timestamp: pd.Timestamp) -> Dict[str, float]:
+    def process_positions(
+        self, current_data: pd.DataFrame, timestamp: pd.Timestamp
+    ) -> Dict[str, float]:
         closed_positions = {}
         current_data_dict = current_data.set_index("slug").to_dict(orient="index")
 
@@ -410,7 +438,7 @@ class PredictionBacktester:
                 continue
 
             current_price = current_data_dict[currency]["quote.USD.price"]
-            
+
             # Update highest price and trailing stop loss
             if current_price > position.highest_price:
                 position.highest_price = current_price
@@ -418,65 +446,99 @@ class PredictionBacktester:
                     position.entry_price,
                     current_price,
                     position.stop_loss,
-                    position.highest_price
+                    position.highest_price,
                 )
 
             # Check stop loss
             if current_price <= position.stop_loss:
-                exit_fee = self.calculate_trading_fees(position.position_size, current_price)
-                pnl = self.risk_manager.calculate_pnl(position, current_price, current_data_dict[currency]["quote.USD.volume_24h"])
+                exit_fee = self.calculate_trading_fees(
+                    position.position_size, current_price
+                )
+                pnl = self.risk_manager.calculate_pnl(
+                    position,
+                    current_price,
+                    current_data_dict[currency]["quote.USD.volume_24h"],
+                )
                 self.risk_manager.update_equity(pnl)
-                
+
                 closed_positions[currency] = pnl
                 del self.results["positions"][currency]
-                
+
                 # Record trade
-                self.record_trade(currency, position, current_price, timestamp, "stop_loss", exit_fee, pnl)
-                
+                self.record_trade(
+                    currency,
+                    position,
+                    current_price,
+                    timestamp,
+                    "stop_loss",
+                    exit_fee,
+                    pnl,
+                )
+
             # Check take profit
             elif current_price >= position.take_profit:
                 # Calculate partial position size to exit
                 exit_size = self.risk_manager.calculate_partial_exit_size(
-                    position.position_size,
-                    position.current_tp_level
+                    position.position_size, position.current_tp_level
                 )
-                
+
                 exit_fee = self.calculate_trading_fees(exit_size, current_price)
-                
+
                 # Calculate PnL for partial exit
-                partial_pnl = (current_price - position.entry_price) * exit_size - exit_fee
+                partial_pnl = (
+                    current_price - position.entry_price
+                ) * exit_size - exit_fee
                 self.risk_manager.update_equity(partial_pnl)
-                
+
                 # Update position size
                 position.position_size -= exit_size
-                
+
                 # Get next take profit level
                 next_tp, next_tp_level = self.risk_manager.get_next_take_profit(
-                    position.entry_price,
-                    position.current_tp_level
+                    position.entry_price, position.current_tp_level
                 )
-                
+
                 if next_tp is None or position.position_size <= 0:
                     if position.position_size > 0:
-                        final_exit_fee = self.calculate_trading_fees(position.position_size, current_price)
-                        final_pnl = (current_price - position.entry_price) * position.position_size - final_exit_fee
+                        final_exit_fee = self.calculate_trading_fees(
+                            position.position_size, current_price
+                        )
+                        final_pnl = (
+                            current_price - position.entry_price
+                        ) * position.position_size - final_exit_fee
                         self.risk_manager.update_equity(final_pnl)
 
                         partial_pnl += final_pnl
-                    
+
                     closed_positions[currency] = partial_pnl
                     del self.results["positions"][currency]
-                    
+
                     # Record final trade
-                    self.record_trade(currency, position, current_price, timestamp, "take_profit_final", exit_fee + final_exit_fee, partial_pnl)
+                    self.record_trade(
+                        currency,
+                        position,
+                        current_price,
+                        timestamp,
+                        "take_profit_final",
+                        exit_fee + final_exit_fee,
+                        partial_pnl,
+                    )
                 else:
                     # Update position for next take profit level
                     position.take_profit = next_tp
                     position.current_tp_level = next_tp_level
                     position.position_value = position.position_size * current_price
-                    
+
                     # Record partial trade
-                    self.record_trade(currency, position, current_price, timestamp, "take_profit_partial", exit_fee, partial_pnl)
+                    self.record_trade(
+                        currency,
+                        position,
+                        current_price,
+                        timestamp,
+                        "take_profit_partial",
+                        exit_fee,
+                        partial_pnl,
+                    )
 
         return closed_positions
 
@@ -503,9 +565,7 @@ class PredictionBacktester:
                 row["quote.USD.percent_change_24h"],
             ]
             valid_changes = [x / 100 for x in changes if pd.notna(x)]
-            return max(
-                np.std(valid_changes) if valid_changes else 0.02, 0.02
-            )  
+            return max(np.std(valid_changes) if valid_changes else 0.02, 0.02)
         except Exception as e:
             print(f"Error calculating volatility: {str(e)}")
             return 0.02  # Default volatility
@@ -587,15 +647,17 @@ class PredictionBacktester:
             # Limit position value to 0.5% of initial equity
             max_position_value = self.initial_equity * 0.005  # 0.5%
             position_value = position_size * price
-            
+
             if position_value > max_position_value:
                 # Reduce position size to meet the 0.5% limit
                 position_size = math.floor(max_position_value / price)
                 position_value = position_size * price
-                
+
                 # Check if the reduced position size is still valid
                 if position_size < 1:
-                    log_entry["reason_rejected"] = "Position size too small after value limit"
+                    log_entry["reason_rejected"] = (
+                        "Position size too small after value limit"
+                    )
                     self.results["position_creation_log"].append(log_entry)
                     return None
 
@@ -661,8 +723,10 @@ class PredictionBacktester:
             current_price = current_row["quote.USD.price"].iloc[0]
 
             # Check if position has been open for more than 5 hours
-            if (timestamp - position.entry_timestamp) > pd.Timedelta(hours=5): # change hours here
-                
+            if (timestamp - position.entry_timestamp) > pd.Timedelta(
+                hours=5
+            ):  # change hours here
+
                 exit_price = current_price
                 volume_24h = current_row["quote.USD.volume_24h"].iloc[0]
                 pnl = self.risk_manager.calculate_pnl(
@@ -670,7 +734,6 @@ class PredictionBacktester:
                 )
                 self.risk_manager.update_equity(pnl)
 
-                
                 self.results["trades_history"].append(
                     {
                         "currency": currency,
@@ -704,7 +767,6 @@ class PredictionBacktester:
                     )
                     self.risk_manager.update_equity(pnl)
 
-                  
                     self.results["trades_history"].append(
                         {
                             "currency": currency,
@@ -731,9 +793,11 @@ class PredictionBacktester:
                     del self.results["positions"][currency]
                 else:
                     # Update unrealized PnL
-                    unrealized_pnl = 0  
+                    unrealized_pnl = 0
                     for pos in self.results["positions"].values():
-                        unrealized_pnl += (current_price - pos.entry_price) * pos.position_size
+                        unrealized_pnl += (
+                            current_price - pos.entry_price
+                        ) * pos.position_size
 
                     self.results["equity_curve"][-1] += unrealized_pnl
 
@@ -877,18 +941,17 @@ class PredictionBacktester:
         }
 
     def plot_results(self):
-        plt.style.use('seaborn-v0_8-whitegrid')
-    
-        
+        plt.style.use("seaborn-v0_8-whitegrid")
+
         fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16))
-        fig.set_facecolor('white')
+        fig.set_facecolor("white")
 
         # Classic professional colors
-        equity_colors = ('#1f77b4', '#ff7f0e')  # Classic blue and orange
-        drawdown_colors = ('#d62728', '#ff9896')  # Deep and light red
-        sharpe_color = '#2ca02c'  # Forest green
-        returns_color = '#17becf'  # Turquoise
-        
+        equity_colors = ("#1f77b4", "#ff7f0e")  # Classic blue and orange
+        drawdown_colors = ("#d62728", "#ff9896")  # Deep and light red
+        sharpe_color = "#2ca02c"  # Forest green
+        returns_color = "#17becf"  # Turquoise
+
         timestamps = pd.to_datetime(self.results["timestamps"])
 
         realized_equity = [self.initial_equity]
@@ -903,78 +966,104 @@ class PredictionBacktester:
                 (
                     (
                         self.crypto_df.loc[
-                            (self.crypto_df["timestamp"] == timestamp) & 
-                            (self.crypto_df["slug"] == pos.currency), 
-                            "quote.USD.price"
+                            (self.crypto_df["timestamp"] == timestamp)
+                            & (self.crypto_df["slug"] == pos.currency),
+                            "quote.USD.price",
                         ].iloc[0]
                         if not self.crypto_df.loc[
-                            (self.crypto_df["timestamp"] == timestamp) & 
-                            (self.crypto_df["slug"] == pos.currency)
+                            (self.crypto_df["timestamp"] == timestamp)
+                            & (self.crypto_df["slug"] == pos.currency)
                         ].empty
                         else pos.entry_price
                     )
                     - pos.entry_price
-                ) * pos.position_size
+                )
+                * pos.position_size
                 for pos in self.results["positions"].values()
                 if pos.entry_timestamp <= timestamp
             )
 
             realized_equity.append(self.initial_equity + realized_pnl)
-            unrealized_equity.append(self.initial_equity + realized_pnl + unrealized_pnl)
+            unrealized_equity.append(
+                self.initial_equity + realized_pnl + unrealized_pnl
+            )
 
-        # Plot 1: Equity Curves 
-        ax1.plot(timestamps, realized_equity[1:], label="Realized Equity", 
-         color=equity_colors[0], linewidth=2)
-        ax1.plot(timestamps, unrealized_equity[1:], label="Unrealized Equity", 
-         color=equity_colors[1], linewidth=2)
-        ax1.set_title("Equity Curves", pad=20, fontsize=14, fontweight='bold')
+        # Plot 1: Equity Curves
+        ax1.plot(
+            timestamps,
+            realized_equity[1:],
+            label="Realized Equity",
+            color=equity_colors[0],
+            linewidth=2,
+        )
+        ax1.plot(
+            timestamps,
+            unrealized_equity[1:],
+            label="Unrealized Equity",
+            color=equity_colors[1],
+            linewidth=2,
+        )
+        ax1.set_title("Equity Curves", pad=20, fontsize=14, fontweight="bold")
         ax1.set_ylabel("Portfolio Value ($)", fontsize=12)
         ax1.legend(frameon=True, fancybox=True, shadow=True)
         ax1.grid(True, alpha=0.3)
-        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+        ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
 
-        # Plot 2: Drawdown 
+        # Plot 2: Drawdown
         equity_series = pd.Series(unrealized_equity[1:], index=timestamps)
         rolling_max = equity_series.expanding().max()
         drawdowns = equity_series / rolling_max - 1
         ax2.fill_between(timestamps, drawdowns, 0, color=drawdown_colors[0], alpha=0.3)
-        ax2.plot(timestamps, drawdowns, color=drawdown_colors[1], linewidth=1, alpha=0.5)
-        ax2.set_title(f"Drawdown (Max: {drawdowns.min():.2%})", pad=20, fontsize=14, fontweight='bold')
+        ax2.plot(
+            timestamps, drawdowns, color=drawdown_colors[1], linewidth=1, alpha=0.5
+        )
+        ax2.set_title(
+            f"Drawdown (Max: {drawdowns.min():.2%})",
+            pad=20,
+            fontsize=14,
+            fontweight="bold",
+        )
         ax2.set_ylabel("Drawdown", fontsize=12)
         ax2.grid(True, alpha=0.3)
-        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1%}'))
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1%}"))
 
-        # Plot 3: Sharpe Ratio 
+        # Plot 3: Sharpe Ratio
         returns = pd.Series(unrealized_equity).pct_change().dropna()
         rolling_sharpe = returns.rolling(window=10).apply(
             lambda x: np.sqrt(252) * x.mean() / x.std() if x.std() != 0 else 0
         )
         ax3.plot(timestamps[0:], rolling_sharpe, color=sharpe_color, linewidth=2)
-        ax3.set_title("Rolling Sharpe Ratio (30-day window)", pad=20, fontsize=14, fontweight='bold')
+        ax3.set_title(
+            "Rolling Sharpe Ratio (30-day window)",
+            pad=20,
+            fontsize=14,
+            fontweight="bold",
+        )
         ax3.set_ylabel("Sharpe Ratio", fontsize=12)
         ax3.grid(True, alpha=0.3)
-        ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.2f}'))
+        ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.2f}"))
 
-        # Plot 4: Cumulative Returns 
+        # Plot 4: Cumulative Returns
         cumulative_returns = (equity_series / self.initial_equity - 1) * 100
         ax4.plot(timestamps, cumulative_returns, color=returns_color, linewidth=2)
-        ax4.set_title("Cumulative Returns (%)", pad=20, fontsize=14, fontweight='bold')
+        ax4.set_title("Cumulative Returns (%)", pad=20, fontsize=14, fontweight="bold")
         ax4.set_ylabel("Cumulative Returns (%)", fontsize=12)
         ax4.set_xlabel("Time", fontsize=12)
         ax4.grid(True, alpha=0.3)
-        ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+        ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"{x:.1f}%"))
 
         # styling for all subplots
         for ax in [ax1, ax2, ax3, ax4]:
             ax.set_xlim(timestamps.min(), timestamps.max())
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-            ax.tick_params(axis='x')
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+            ax.tick_params(axis="x")
             ax.margins(x=0.02)
 
         plt.tight_layout(pad=7.0)
         plt.show()
+
 
 def main():
     crypto_df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/CryptoAPI.csv")
@@ -987,7 +1076,7 @@ def main():
         promising_currencies_df["timestamp"]
     )
 
-    initial_equity = 1000.0 # change initial money amount here
+    initial_equity = Config.initial_equity  # change initial money amount in config.py
     backtester = PredictionBacktester(
         crypto_df=crypto_df,
         promising_currencies_df=promising_currencies_df,

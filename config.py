@@ -28,3 +28,10 @@ class Config:
     upper_threshold = u_t = 50  # Upper bound for false valuation score
 
     file_count = 1
+
+    # CRYPTO BUDGET RANGE SELECTION TO DISPLAY THE PROMISING CURRENCIES AT YOUR RANGE
+    min_usd_price = mn_p = 0.001
+    max_usd_price = mx_p = 100000
+
+    # INITIAL EQUITY IN $
+    initial_equity = 10000
