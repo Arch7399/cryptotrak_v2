@@ -1,46 +1,87 @@
 import os
+from dataclasses import dataclass
+from typing import List, Dict, Optional
+from functools import lru_cache
 import pandas as pd
 import numpy as np
 from scipy import stats
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.ensemble import IsolationForest
 from sklearn.impute import SimpleImputer
+import talib
+from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
 from data_processing import process_data
 from pipeline_filters import apply_filters
 from pipeline_mixed_filters import apply_tandem_filters
-from datetime import datetime, timedelta
 from latest_data import filter_latest
 from config import Config
-import talib
 
 
-def prepare_data(raw_data_path):
-    df = pd.read_csv(raw_data_path)
-    df = filter_latest(df)
-    df = df.sort_values("timestamp")
-    return df
+@dataclass
+class FeatureWeights:
+    """Stores weights for different features in promise score calculation"""
+
+    MARKET_DOMINANCE: float = 0.08
+    VOLUME_STABILITY: float = 0.04
+    PRICE_STABILITY: float = 0.04
+    PERCENT_CHANGE_24H: float = 0.08
+    PERCENT_CHANGE_7D: float = 0.08
+    RSI: float = 0.08
+    UPTREND: float = 0.04
+    GOLDEN_CROSS: float = 0.04
+    MACD_HIST: float = 0.08
+    BB_WIDTH: float = 0.04
+    ADX: float = 0.08
+    OBV: float = 0.04
+    FLAG_SEVERITY: float = 0.12
+    CMF: float = 0.02
+    MARKET_STABILITY: float = 0.02
+    VOL_PRICE_CORR: float = 0.02
+    PRICE_ATR_RATIO: float = 0.02
 
 
-def calculate_z_scores(df, columns):
-    for col in columns:
-        df[f"{col}_zscore"] = stats.zscore(df[col])
-    return df
+class DataPreprocessor:
+    """Handles data preprocessing operations"""
+
+    @staticmethod
+    def prepare_data(raw_data_path: str) -> pd.DataFrame:
+        """Load and prepare initial dataset"""
+        df = pd.read_csv(raw_data_path)
+        return filter_latest(df).sort_values("timestamp")
+
+    @staticmethod
+    def calculate_z_scores(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
+        """Vectorized z-score calculation"""
+        z_scores = pd.DataFrame()
+        for col in columns:
+            z_scores[f"{col}_zscore"] = stats.zscore(df[col])
+        return pd.concat([df, z_scores], axis=1)
+
+    @staticmethod
+    def calculate_time_decay(
+        df: pd.DataFrame, half_life: timedelta = timedelta(hours=6)
+    ) -> pd.DataFrame:
+        """Vectorized time decay calculation"""
+        now = df["timestamp"].max()
+        df["time_decay"] = np.exp(
+            -np.log(2)
+            * (pd.to_datetime(now) - pd.to_datetime(df["timestamp"]))
+            / half_life
+        )
+        return df
 
 
-def calculate_time_decay(df, half_life=timedelta(hours=6)):
-    now = df["timestamp"].max()
-    df["time_decay"] = np.exp(-np.log(2) * (now - df["timestamp"]) / half_life)
-    return df
+class FlagProcessor:
+    """Handles flag-related calculations"""
 
-
-def calculate_flag_severity(df):
-    positive_flags = [
+    POSITIVE_FLAGS = [
         "price_spike_flag",
         "volume_surge_flag",
         "bullish_momentum_breakout_flag",
         "reversal_opportunity_flag",
     ]
-    negative_flags = [
+
+    NEGATIVE_FLAGS = [
         "price_crash_flag",
         "low_liquidity_flag",
         "pump_flag",
@@ -49,254 +90,222 @@ def calculate_flag_severity(df):
         "false_valuation_flag",
     ]
 
-    df["positive_flags"] = df[positive_flags].sum(axis=1)
-    df["negative_flags"] = df[negative_flags].sum(axis=1)
+    @classmethod
+    def calculate_flag_severity(cls, df: pd.DataFrame) -> pd.DataFrame:
+        """Vectorized flag severity calculation"""
+        df["positive_flags"] = df[cls.POSITIVE_FLAGS].sum(axis=1)
+        df["negative_flags"] = df[cls.NEGATIVE_FLAGS].sum(axis=1)
+        df["flag_severity"] = df["positive_flags"] - df["negative_flags"] * 1.5
+        return df
 
-    df["flag_severity"] = df["positive_flags"] - df["negative_flags"] * 1.5
-    return df
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def calculate_flag_based_penalty(positive_flags: int, negative_flags: int) -> float:
+        """Cached calculation of flag-based penalties"""
+        severity_ratio = (positive_flags + 1) / (negative_flags + 1)
 
-
-def improve_promising_currency_code(df):
-    # Add more relevant features
-    df["market_dominance"] = (
-        df["quote.USD.market_cap"] / df["quote.USD.market_cap"].sum()
-    )
-    df["volume_stability"] = (
-        df["quote.USD.volume_24h"].rolling(window=7).std()
-        / df["quote.USD.volume_24h"].rolling(window=7).mean()
-    )
-    df["price_stability"] = (
-        df["quote.USD.price"].rolling(window=7).std()
-        / df["quote.USD.price"].rolling(window=7).mean()
-    )
-
-    # Create trend indicators
-    df["uptrend"] = (df["SMA_50"] > df["SMA_200"]).astype(int)
-    df["golden_cross"] = (
-        (df["SMA_50"] > df["SMA_200"])
-        & (df["SMA_50"].shift(1) <= df["SMA_200"].shift(1))
-    ).astype(int)
-
-    # ADX calculation
-    close = df["quote.USD.price"].values
-
-    df["ADX"] = talib.ADX(close, close, close, timeperiod=14)
-
-    # Add OBV (On-Balance Volume)
-    df["OBV"] = talib.OBV(close, df["quote.USD.volume_24h"].values)
-
-    return df
+        if negative_flags == 0:
+            bonus = min(positive_flags * 5, 20)
+            return min(1 + bonus / 100, 1)
+        elif negative_flags == 1:
+            return 0.7 if severity_ratio > 1 else 0.6
+        elif negative_flags == 2:
+            return 0.4 if severity_ratio > 1.5 else 0.3
+        else:
+            return 0.2 if severity_ratio > 2 else 0.1
 
 
-def detect_anomalies(df):
-    features = [
-        "market_dominance",
-        "volume_stability",
-        "price_stability",
-        "quote.USD.percent_change_24h",
-        "quote.USD.percent_change_7d",
-        "RSI",
-        "MACD_hist",
-        "BB_width",
-    ]
+class TechnicalAnalyzer:
+    """Handles technical analysis calculations"""
 
-    available_features = [f for f in features if f in df.columns]
-    missing_features = set(features) - set(available_features)
+    @staticmethod
+    def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+        """Vectorized technical indicator calculations"""
+        close = df["quote.USD.price"].values
 
-    if missing_features:
-        print(
-            f"Warning: The following features are missing and will be excluded: {missing_features}"
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(
+                    lambda: pd.Series(
+                        talib.ADX(close, close, close, timeperiod=14), name="ADX"
+                    )
+                ),
+                executor.submit(
+                    lambda: pd.Series(
+                        talib.OBV(close, df["quote.USD.volume_24h"].values), name="OBV"
+                    )
+                ),
+            ]
+
+            results = [future.result() for future in futures]
+
+        for result in results:
+            df[result.name] = result
+
+        return df
+
+    @staticmethod
+    def calculate_market_metrics(df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate market-related metrics"""
+        df["market_dominance"] = (
+            df["quote.USD.market_cap"] / df["quote.USD.market_cap"].sum()
         )
 
-    features = available_features
+        # Vectorized rolling calculations
+        rolling_volume = df["quote.USD.volume_24h"].rolling(window=7)
+        rolling_price = df["quote.USD.price"].rolling(window=7)
 
-    # Create a SimpleImputer
-    imputer = SimpleImputer(strategy="mean")
+        df["volume_stability"] = rolling_volume.std() / rolling_volume.mean()
+        df["price_stability"] = rolling_price.std() / rolling_price.mean()
 
-    # Fit and transform the data
-    X = imputer.fit_transform(df[features])
+        # Trend indicators
+        df["uptrend"] = (df["SMA_50"] > df["SMA_200"]).astype(int)
+        df["golden_cross"] = (
+            (df["SMA_50"] > df["SMA_200"])
+            & (df["SMA_50"].shift(1) <= df["SMA_200"].shift(1))
+        ).astype(int)
 
-    # Initialize and fit the Isolation Forest
-    iso_forest = IsolationForest(contamination=0.1, random_state=42)
-    df["anomaly"] = iso_forest.fit_predict(X)
-
-    return df
-
-
-def score_currencies(df):
-    z_score_columns = [
-        "quote.USD.percent_change_24h",
-        "quote.USD.percent_change_7d",
-        "quote.USD.volume_change_24h",
-        "volatility",
-    ]
-    df = calculate_z_scores(df, z_score_columns)
-
-    df = calculate_time_decay(df)
-    df = calculate_flag_severity(df)
-
-    df = improve_promising_currency_code(df)
-
-    df = detect_anomalies(df)
-
-    # Initial promise score calculation
-    df["promise_score"] = (
-        df["market_dominance"] * 0.08
-        + (1 - df["volume_stability"]) * 0.04
-        + (1 - df["price_stability"]) * 0.04
-        + df["quote.USD.percent_change_24h"] * 0.08
-        + df["quote.USD.percent_change_7d"] * 0.08
-        + (df["RSI"] - 50).abs() / 50 * 0.08
-        + df["uptrend"] * 0.04
-        + df["golden_cross"] * 0.04
-        + df["MACD_hist"] * 0.08
-        + df["BB_width"] * 0.04
-        + df["ADX"] / 100 * 0.08
-        + df["OBV"].pct_change() * 0.04
-        + df["flag_severity"] * 0.12  # Increased weight for flag severity
-        + df["CMF"] * 0.02
-        + df["market_stability_index"] * 0.02
-        + df["vol_price_correlation_normalized"] * 0.02
-        + df["price_to_ATR_ratio"].clip(lower=0, upper=1) * 0.02
-    )
-
-    # Apply initial penalties
-    volatility_penalty = np.where(
-        df["volatility_score"] > 0.5,
-        df["promise_score"] * (1 - df["volatility_score"] * 0.5),
-        df["promise_score"],
-    )
-    df["promise_score"] = volatility_penalty
-
-    volume_adjustment = np.where(
-        (df["volume_stability"] < 0.3) & (df["volume_dominance"] > 0.01),
-        df["promise_score"] * 1.1,
-        df["promise_score"] * (0.9 - df["volume_stability"] * 0.2),
-    )
-    df["promise_score"] = volume_adjustment
-
-    mcap_volume_adjustment = np.where(
-        (df["vol_mcap_ratio"] > 0.1) & (df["vol_mcap_ratio"] < 0.5),
-        df["promise_score"] * 1.05,
-        df["promise_score"] * 0.85,
-    )
-    df["promise_score"] = mcap_volume_adjustment
-
-    # Handle any negative scores
-    df["promise_score"] = df["promise_score"].clip(lower=0)
-
-    # # First scaling to 0-100
-    # scaler = MinMaxScaler(feature_range=(0, 100))
-    # df["promise_score"] = scaler.fit_transform(df[["promise_score"]])
-
-    # Enhanced flag-based penalties AFTER scaling
-    def calculate_flag_based_penalty(row):
-        base_score = row["promise_score"]
-
-        # Calculate severity ratio (positive to negative flags)
-        severity_ratio = (row["positive_flags"] + 1) / (row["negative_flags"] + 1)
-
-        # Define penalty based on negative flags count and severity
-        if row["negative_flags"] == 0:
-            # Bonus for positive flags when no negative flags
-            bonus = min(row["positive_flags"] * 5, 20)  # Up to 20% bonus
-            return min(base_score * (1 + bonus / 100), 100)
-
-        elif row["negative_flags"] == 1:
-            # Less severe penalty if balanced by positive flags
-            penalty_factor = 0.7 if severity_ratio > 1 else 0.6
-            return base_score * penalty_factor
-
-        elif row["negative_flags"] == 2:
-            # Moderate penalty, slightly reduced if many positive flags
-            penalty_factor = 0.4 if severity_ratio > 1.5 else 0.3
-            return base_score * penalty_factor
-
-        else:  # 3+ negative flags
-            # Severe penalty, very slightly reduced if exceptional positive flags
-            penalty_factor = 0.2 if severity_ratio > 2 else 0.1
-            return base_score * penalty_factor
-
-    df["promise_score"] = df.apply(calculate_flag_based_penalty, axis=1)
-
-    # Specific flag type penalties
-    def apply_specific_flag_penalties(row):
-        score = row["promise_score"]
-
-        # Severe negative flags (additional penalties)
-        if row["pump_flag"] or row["dump_flag"]:
-            score *= 0.7  # 30% reduction for pump/dump flags
-
-        if row["market_cap_volume_discrepancy_flag"]:
-            score *= 0.8  # 20% reduction for market cap discrepancy
-
-        if row["false_valuation_flag"]:
-            score *= 0.75  # 25% reduction for false valuation
-
-        # Positive flag bonuses (only if negative flags <= 1)
-        if row["negative_flags"] <= 1:
-            if row["bullish_momentum_breakout_flag"]:
-                score = min(score * 1.1, 100)  # 10% bonus
-
-            if row["reversal_opportunity_flag"]:
-                score = min(score * 1.05, 100)  # 5% bonus
-
-        return score
-
-    df["promise_score"] = df.apply(apply_specific_flag_penalties, axis=1)
-
-    # Final adjustments
-    df["promise_score"] = np.where(
-        df["anomaly"] == -1, df["promise_score"] * 0.6, df["promise_score"]
-    )
-
-    df["promise_score"] = np.where(
-        (df["RSI"] > 80) | (df["RSI"] < 20),
-        df["promise_score"] * 0.75,
-        df["promise_score"],
-    )
-
-    # # Ensure final scores are within 0-100 range
-    # df["promise_score"] = df["promise_score"].clip(0, 100).round(2)
-
-    df = df[df["quote.USD.price"].between(Config.min_usd_price, Config.max_usd_price)]
-    return df
+        return df
 
 
-def identify_promising_currencies(raw_data_path):
-    df = prepare_data(raw_data_path)
-    df_processed = process_data(df)
+class AnomalyDetector:
+    """Handles anomaly detection"""
 
-    df_filtered = apply_filters(df_processed)
+    def __init__(self, contamination: float = 0.1):
+        self.features = [
+            "market_dominance",
+            "volume_stability",
+            "price_stability",
+            "quote.USD.percent_change_24h",
+            "quote.USD.percent_change_7d",
+            "RSI",
+            "MACD_hist",
+            "BB_width",
+        ]
+        self.imputer = SimpleImputer(strategy="mean")
+        self.iso_forest = IsolationForest(contamination=contamination, random_state=42)
 
-    df_tandem_filtered = apply_tandem_filters(df_filtered)
+    def detect(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Perform anomaly detection"""
+        available_features = [f for f in self.features if f in df.columns]
 
-    df_scored = score_currencies(df_tandem_filtered)
+        if missing := set(self.features) - set(available_features):
+            print(f"Warning: Missing features: {missing}")
 
-    promising_currencies = df_scored.nlargest(30, "promise_score")
+        X = self.imputer.fit_transform(df[available_features])
+        df["anomaly"] = self.iso_forest.fit_predict(X)
+        return df
 
-    return promising_currencies.sort_values("promise_score", ascending=False)
+
+class ScoreCalculator:
+    """Handles promise score calculations"""
+
+    def __init__(self, weights: Optional[FeatureWeights] = None):
+        self.weights = weights or FeatureWeights()
+
+    def calculate_base_score(self, df: pd.DataFrame) -> pd.Series:
+        """Vectorized base score calculation"""
+        components = {
+            "market_dominance": df["market_dominance"] * self.weights.MARKET_DOMINANCE,
+            "volume_stability": (1 - df["volume_stability"])
+            * self.weights.VOLUME_STABILITY,
+            "price_stability": (1 - df["price_stability"])
+            * self.weights.PRICE_STABILITY,
+            "percent_change_24h": df["quote.USD.percent_change_24h"]
+            * self.weights.PERCENT_CHANGE_24H,
+            "percent_change_7d": df["quote.USD.percent_change_7d"]
+            * self.weights.PERCENT_CHANGE_7D,
+            "rsi": (df["RSI"] - 50).abs() / 50 * self.weights.RSI,
+            "uptrend": df["uptrend"] * self.weights.UPTREND,
+            "golden_cross": df["golden_cross"] * self.weights.GOLDEN_CROSS,
+            "macd": df["MACD_hist"] * self.weights.MACD_HIST,
+            "bb_width": df["BB_width"] * self.weights.BB_WIDTH,
+            "adx": df["ADX"] / 100 * self.weights.ADX,
+            "obv": df["OBV"].pct_change(fill_method=None) * self.weights.OBV,
+            "flag_severity": df["flag_severity"] * self.weights.FLAG_SEVERITY,
+            "cmf": df["CMF"] * self.weights.CMF,
+            "market_stability": df["market_stability_index"]
+            * self.weights.MARKET_STABILITY,
+            "vol_price_corr": df["vol_price_correlation_normalized"]
+            * self.weights.VOL_PRICE_CORR,
+            "price_atr": df["price_to_ATR_ratio"].clip(lower=0, upper=1)
+            * self.weights.PRICE_ATR_RATIO,
+        }
+
+        return pd.DataFrame(components).sum(axis=1)
+
+    def apply_adjustments(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply score adjustments"""
+        df["promise_score"] = self.calculate_base_score(df)
+
+        # Vectorized adjustments
+        conditions = [
+            (df["volatility_score"] > 0.5),
+            ((df["volume_stability"] < 0.3) & (df["volume_dominance"] > 0.01)),
+            ((df["vol_mcap_ratio"] > 0.1) & (df["vol_mcap_ratio"] < 0.5)),
+            (df["anomaly"] == -1),
+            ((df["RSI"] > 80) | (df["RSI"] < 20)),
+        ]
+
+        choices = [
+            df["promise_score"] * (1 - df["volatility_score"] * 0.5),
+            df["promise_score"] * 1.1,
+            df["promise_score"] * 1.05,
+            df["promise_score"] * 0.6,
+            df["promise_score"] * 0.75,
+        ]
+
+        df["promise_score"] = np.select(
+            conditions, choices, default=df["promise_score"]
+        )
+
+        return df
 
 
-def performers():
+class CurrencyAnalyzer:
+    """Main class for currency analysis"""
+
+    def __init__(self):
+        self.preprocessor = DataPreprocessor()
+        self.flag_processor = FlagProcessor()
+        self.technical_analyzer = TechnicalAnalyzer()
+        self.anomaly_detector = AnomalyDetector()
+        self.score_calculator = ScoreCalculator()
+
+    def analyze(self, raw_data_path: str) -> pd.DataFrame:
+        """Perform complete analysis pipeline"""
+        df = self.preprocessor.prepare_data(raw_data_path)
+        df = process_data(df)
+        df = apply_filters(df)
+        df = apply_tandem_filters(df)
+
+        # Apply all analysis steps
+        df = self.technical_analyzer.calculate_market_metrics(df)
+        df = self.technical_analyzer.calculate_technical_indicators(df)
+        df = self.flag_processor.calculate_flag_severity(df)
+        df = self.anomaly_detector.detect(df)
+        df = self.score_calculator.apply_adjustments(df)
+
+        # Apply price filter
+        mask = df["quote.USD.price"].between(Config.min_usd_price, Config.max_usd_price)
+        return df[mask].nlargest(30, "promise_score")
+
+
+def performers() -> List[str]:
+    """Get top performing currencies"""
     raw_data_path = f"C:/Users/{os.getenv('USER')}/Desktop/CryptoAPI.csv"
+    analyzer = CurrencyAnalyzer()
 
-    promising_currencies = identify_promising_currencies(raw_data_path)
-
-    # promising_currencies["timestamp"] = promising_currencies["timestamp"].dt.strftime(
-    #     "%Y-%m-%dT%H:%M:%S"
-    # )
+    promising_currencies = analyzer.analyze(raw_data_path)
 
     output_path = (
-        rf"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv"
+        f"C:/Users/{os.getenv('USER')}/Desktop/Analysis/PromisingCurrencies.csv"
     )
     promising_currencies.to_csv(
         output_path, mode="a", header=not os.path.exists(output_path), index=False
     )
 
-    top_5_performers = promising_currencies["name"].head(5).tolist()
-
-    return top_5_performers
+    return promising_currencies["name"].head(5).tolist()
 
 
 if __name__ == "__main__":
