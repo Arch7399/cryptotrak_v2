@@ -6,4 +6,5 @@ requests
 python-dotenv
 scipy
 scikit-learn
-talib
+TA-Lib
+streamlit
