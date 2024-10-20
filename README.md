@@ -95,12 +95,12 @@ The framework now includes a sophisticated backtesting module with the following
    - Rolling Sharpe Ratio plots
    - Cumulative returns analysis
 
-   ![plot-1](./assets/plot_1.png)
+   ![plot-1](./assets/plot_2.png)
 
    - Trade distribution charts
    - Performance metrics dashboard
 
-   ![plot-2](./assets/plot_2.png)
+   ![plot-2](./assets/plot_1.png)
 
 
 ### Scoring System
