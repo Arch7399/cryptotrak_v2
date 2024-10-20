@@ -1,6 +1,8 @@
 # Cryptocurrency Analyzer
 
-This project is an advanced cryptocurrency analysis framework designed to identify promising trading opportunities using sophisticated technical analysis, market metrics, and multiple filtering strategies. The framework combines traditional technical indicators with custom metrics for comprehensive market analysis, anomaly detection, and backtesting capabilities.
+This ongoing project is an advanced cryptocurrency analysis framework designed to identify promising trading opportunities using sophisticated technical analysis, market metrics, and multiple filtering strategies. The framework combines traditional technical indicators with custom metrics for comprehensive market analysis, anomaly detection, and backtesting capabilities.
+
+![Crypto Predictions](./assets/trak-dashboard.png)
 
 ## Core Features
 
@@ -92,8 +94,14 @@ The framework now includes a sophisticated backtesting module with the following
    - Drawdown visualization
    - Rolling Sharpe Ratio plots
    - Cumulative returns analysis
+
+   ![plot-1](./assets/plot_1.png)
+
    - Trade distribution charts
    - Performance metrics dashboard
+
+   ![plot-2](./assets/plot_2.png)
+
 
 ### Scoring System
 - **Composite Scoring Algorithm**:
