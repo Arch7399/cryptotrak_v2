@@ -148,6 +148,9 @@ The framework now includes a sophisticated backtesting module with the following
 4. **Setup Analysis Directory**:
    Create an "Analysis" folder and a "price_difference_dump" folder in your desktop or modify the path in the configuration.
 
+5. **Setup email module**:
+   To setup smtp service for your google account to send mails to recipients go [here](https://support.google.com/a/answer/176600?hl=en) for google or find appropriate setup for your mail service.
+
 ## Usage
 
 ### Basic Analysis
@@ -156,7 +159,7 @@ python main.py
 ```
 
 The system will analyze cryptocurrency data and alert with the top 5 performing currencies based on the comprehensive scoring system.
-Important: It's recommended to run the Basic Analysis atleast 5 times spaced by an hour to populate the prediction data over which the backtesting can be performed
+Important: It's recommended to run the Basic Analysis atleast 5 times spaced by an hour to populate the prediction data over which the backtesting can be performed. Note - You might get the "ValueError: Not enough timestamps to calculate the diffference." for upto 10 runs because of shortage of data to calculate difference metrics, but that is okay, since they are irrelevant for now and they are for upcoming ML implementation and doesnt hinder with the backtesting modules. 
 
 ### Backtesting
 ```python
