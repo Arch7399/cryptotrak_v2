@@ -156,10 +156,11 @@ python main.py
 ```
 
 The system will analyze cryptocurrency data and alert with the top 5 performing currencies based on the comprehensive scoring system.
+Important: It's recommended to run the Basic Analysis atleast 5 times spaced by an hour to populate the prediction data over which the backtesting can be performed
 
 ### Backtesting
 ```python
-python backtesting_v1.py
+python tests/main.py
 ```
 
 This will run the backtesting system with the following capabilities:
@@ -205,7 +206,7 @@ The system supports customization of various parameters through the configuratio
   - Reversal opportunity detection
   - Momentum divergence analysis
 
-- `backtesting.py`: Backtesting and performance analysis
+- `tests/main.py`: Backtesting and performance analysis
   - Historical simulation
   - Risk management system
   - Performance metrics calculation
