@@ -1,22 +1,33 @@
 import pandas as pd
 import numpy as np
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
+def handle_infinite_values(data):
+    """
+    Convert infinite values to NaN in numpy arrays or lists
+    """
+    if isinstance(data, list):
+        return [np.nan_to_num(np.array(d), nan=np.nan) for d in data]
+    return np.nan_to_num(np.array(data), nan=np.nan)
+
+
 def prepare_data(df):
     """
     Prepare the dataset with enhanced features focusing on lower price range prediction
     """
-    # Create a copy of the dataframe to avoid SettingWithCopyWarning
     df = df.copy()
 
     # Add time-based features
@@ -27,84 +38,81 @@ def prepare_data(df):
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
 
-    # Enhanced momentum indicators
+    # momentum indicators
     momentum_indicators = [
         "RSI",
         "MACD",
         "MACD_hist",
-        "MACD_signal",  # Added MACD signal line
+        "MACD_signal",
         "EMA_short",
         "EMA_long",
         "MOM",
         "ROC",
-        "momentum_score",  # Added overall momentum score
-        "momentum_divergence",  # Added momentum divergence
-        "EMA_9",  # Added shorter-term EMA
-        "uptrend",  # Added uptrend indicator
+        "momentum_score",
+        "momentum_divergence",
+        "EMA_9",
+        "uptrend",
     ]
 
-    # Enhanced volume indicators
+    # volume indicators
     volume_indicators = [
         "OBV",
         "CMF",
         "volume_surge_score",
         "volume_momentum",
         "volume_to_market_cap_ratio",
-        "volume_stability",  # Added volume stability
+        "volume_stability",
         "volume_stability_score",
-        "volume_per_pair",  # Added volume per trading pair
-        "vol_price_correlation",  # Added volume-price correlation
+        "volume_per_pair",
+        "vol_price_correlation",
     ]
 
-    # Enhanced volatility indicators
+    # volatility indicators
     volatility_indicators = [
         "ATR",
         "BB_width",
         "BB_%B",
         "volatility",
-        "volatility_score",  # Added volatility score
-        "volatility_factor",  # Added volatility factor
-        "price_stability",  # Added price stability
+        "volatility_score",
+        "volatility_factor",
+        "price_stability",
     ]
 
-    # Enhanced price action indicators
+    # price action indicators
     price_action = [
         "quote.USD.price",
         "quote.USD.percent_change_1h",
         "quote.USD.percent_change_24h",
-        "quote.USD.percent_change_7d",  # Added more timeframe changes
+        "quote.USD.percent_change_7d",
         "VWAP",
         "price_to_vwap",
         "discrepancy_score",
-        "SMA_50",  # Added moving averages
+        "SMA_50",
         "SMA_200",
-        "golden_cross",  # Added golden cross indicator
+        "golden_cross",
     ]
 
-    # Enhanced market context indicators
+    # market context indicators
     market_context = [
         "market_dominance_score",
         "liquidity_score",
         "market_impact",
         "volume_stability_score",
-        "market_stability_index",  # Added market stability
-        "combined_score",  # Added combined market score
-        "ADX",  # Added Average Directional Index
+        "market_stability_index",
+        "combined_score",
+        "ADX",
     ]
 
     # Technical pattern indicators
     pattern_indicators = [
-        "STOCH_K",  # Added stochastic oscillator
+        "STOCH_K",
         "STOCH_D",
         "ta_price_score",
         "ta_volume_score",
-        "promise_score",  # Added overall promise score
     ]
 
-    # Add time features to the feature list
     time_features = ["hour_sin", "hour_cos", "day_of_week"]
 
-    # Combine all feature groups
     feature_columns = (
         momentum_indicators
         + volume_indicators
@@ -115,7 +123,6 @@ def prepare_data(df):
         + time_features
     )
 
-    # Remove any columns that don't exist in the dataframe
     existing_features = [col for col in feature_columns if col in df.columns]
 
     # Create feature matrix and target vector
@@ -170,7 +177,6 @@ def plot_prediction_improvement(scores, y_true_list, y_pred_list):
     """
     Plot model prediction improvement over folds and prediction accuracy comparison
     """
-    # Create a figure with two subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12))
 
     # Plot 1: R² Score Improvement
@@ -231,11 +237,112 @@ def evaluate_feature_importance(model, X, y):
     return feature_importance
 
 
+def plot_direction_accuracy(y_true_list, y_pred_list):
+    """
+    Create a line chart to show the directional accuracy of predictions for each fold
+    """
+    # Handle infinite values
+    y_true_list = handle_infinite_values(y_true_list)
+    y_pred_list = handle_infinite_values(y_pred_list)
+
+    fig, ax = plt.subplots(figsize=(15, 6))
+
+    for fold, (y_true, y_pred) in enumerate(zip(y_true_list, y_pred_list), start=1):
+        true_direction = np.sign(np.diff(y_true))
+        pred_direction = np.sign(np.diff(y_pred))
+
+        # Create direction indicator (+1 for correct, -1 for incorrect)
+        direction_accuracy = np.where(true_direction == pred_direction, 1, -1)
+
+        valid_predictions = ~np.isnan(true_direction) & ~np.isnan(pred_direction)
+        accuracy = (
+            np.mean(
+                true_direction[valid_predictions] == pred_direction[valid_predictions]
+            )
+            * 100
+        )
+
+        # Plot correct and incorrect predictions as lines
+        ax.plot(
+            range(len(direction_accuracy)),
+            direction_accuracy,
+            label=f"Fold {fold} - {accuracy:.1f}%",
+            linewidth=2,
+        )
+
+    # Customize plot
+    ax.set_title("Direction Accuracy over Time")
+    ax.set_xlabel("Time Steps")
+    ax.set_ylabel("Percentage of Correct Predictions")
+    ax.axhline(y=0, color="black", linestyle="-", alpha=0.3)
+    ax.set_yticks([-1, 0, 1])
+    ax.set_yticklabels(["Incorrect", "Average", "Correct"])
+    ax.legend(loc="upper right")
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_prediction_deviations(y_true_list, y_pred_list):
+    """
+    Create statistical plots showing prediction deviations across folds
+    """
+    y_true_list = handle_infinite_values(y_true_list)
+    y_pred_list = handle_infinite_values(y_pred_list)
+
+    fig, axes = plt.subplots(2, 2, figsize=(20, 20))
+
+    deviations_by_fold = [
+        y_pred - y_true for y_true, y_pred in zip(y_true_list, y_pred_list)
+    ]
+
+    deviations_df = pd.DataFrame(
+        {
+            f"Fold {i+1}": np.nan_to_num(deviations, nan=np.nan)
+            for i, deviations in enumerate(deviations_by_fold)
+        }
+    )
+
+    # Box Plot
+    sns.boxplot(data=deviations_df, ax=axes[0, 0])
+    axes[0, 0].set_title("Distribution of Prediction Deviations by Fold")
+    axes[0, 0].set_xlabel("Fold")
+    axes[0, 0].set_ylabel("Deviation")
+
+    # Violin Plot
+    sns.violinplot(data=deviations_df, ax=axes[0, 1])
+    axes[0, 1].set_title("Violin Plot of Prediction Deviations")
+    axes[0, 1].set_xlabel("Fold")
+    axes[0, 1].set_ylabel("Deviation")
+
+    # KDE Plot
+    for i, deviations in enumerate(deviations_by_fold):
+        valid_deviations = deviations[~np.isnan(deviations)]
+        if len(valid_deviations) > 0:
+            sns.kdeplot(data=valid_deviations, ax=axes[1, 0], label=f"Fold {i+1}")
+    axes[1, 0].set_title("Density Distribution of Deviations")
+    axes[1, 0].set_xlabel("Deviation")
+    axes[1, 0].set_ylabel("Density")
+    axes[1, 0].legend()
+
+    # Q-Q Plot
+    from scipy import stats
+
+    for i, deviations in enumerate(deviations_by_fold):
+        valid_deviations = deviations[~np.isnan(deviations)]
+        if len(valid_deviations) > 0:
+            stats.probplot(valid_deviations, dist="norm", plot=axes[1, 1])
+    axes[1, 1].set_title("Q-Q Plot of Prediction Deviations")
+
+    plt.tight_layout()
+    return fig
+
+
 def train_and_evaluate():
     """
-    Train the model using time series cross-validation
+    Train the model using time series cross-validation with additional analysis plots
     """
-    # Load data
+
     df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/ml_training_data.csv")
     X, y = prepare_data(df.iloc[:-30])
     timestamps = pd.to_datetime(df.iloc[:-30]["timestamp"])
@@ -271,9 +378,11 @@ def train_and_evaluate():
         y_true_list.append(y_test)
         y_pred_list.append(y_pred)
 
+        os.makedirs("plots", exist_ok=True)
+
         # Create and save individual fold prediction plot
         fold_fig = plot_predictions(timestamps_test, y_test, y_pred, fold)
-        fold_fig.savefig(f"plots/fold_{fold}_predictions.png")
+        fold_fig.savefig(os.path.join("plots", f"fold_{fold}_predictions.png"))
         plt.close(fold_fig)
 
         final_X_test = X_test_scaled
@@ -281,8 +390,18 @@ def train_and_evaluate():
 
     # Create and save improvement visualization
     improvement_fig = plot_prediction_improvement(scores, y_true_list, y_pred_list)
-    improvement_fig.savefig(f"plots/model_improvement.png")
+    improvement_fig.savefig(os.path.join("plots", "model_improvement.png"))
     plt.close(improvement_fig)
+
+    # Add direction accuracy plot
+    direction_fig = plot_direction_accuracy(y_true_list, y_pred_list)
+    direction_fig.savefig(os.path.join("plots", "direction_accuracy.png"))
+    plt.close(direction_fig)
+
+    # Add deviation analysis plots
+    deviation_fig = plot_prediction_deviations(y_true_list, y_pred_list)
+    deviation_fig.savefig(os.path.join("plots", "prediction_deviations.png"))
+    plt.close(deviation_fig)
 
     # Get feature importance using the last fold
     feature_importance = evaluate_feature_importance(model, final_X_test, final_y_test)
