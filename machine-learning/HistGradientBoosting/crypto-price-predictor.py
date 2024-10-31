@@ -273,7 +273,7 @@ def plot_direction_accuracy(y_true_list, y_pred_list):
     # Customize plot
     ax.set_title("Direction Accuracy over Time")
     ax.set_xlabel("Time Steps")
-    ax.set_ylabel("Percentage of Correct Predictions")
+    ax.set_ylabel("Percentage of Correct Direction Predictions")
     ax.axhline(y=0, color="black", linestyle="-", alpha=0.3)
     ax.set_yticks([-1, 0, 1])
     ax.set_yticklabels(["Incorrect", "Average", "Correct"])
@@ -338,12 +338,54 @@ def plot_prediction_deviations(y_true_list, y_pred_list):
     return fig
 
 
+def plot_prediction_errors(y_true_list, y_pred_list):
+    """
+    Create visualization of prediction errors across folds
+    """
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12))
+
+    # Calculate errors for each fold
+    errors_by_fold = []
+    mean_errors = []
+    median_errors = []
+    std_errors = []
+
+    for fold, (y_true, y_pred) in enumerate(zip(y_true_list, y_pred_list), 1):
+        errors = y_pred - y_true
+        errors_by_fold.append(errors)
+        mean_errors.append(np.mean(np.abs(errors)))
+        median_errors.append(np.median(np.abs(errors)))
+        std_errors.append(np.std(errors))
+
+    # Plot 1: Error Distribution by Fold
+    bp = ax1.boxplot(
+        errors_by_fold, labels=[f"Fold {i+1}" for i in range(len(errors_by_fold))]
+    )
+    ax1.set_title("Distribution of Prediction Errors by Fold")
+    ax1.set_ylabel("Error (Predicted - Actual)")
+    ax1.grid(True, alpha=0.3)
+
+    # Plot 2: Error Metrics by Fold
+    x = range(1, len(y_true_list) + 1)
+    ax2.plot(x, mean_errors, "b-", label="Mean Absolute Error", marker="o")
+    ax2.plot(x, median_errors, "g-", label="Median Absolute Error", marker="s")
+    ax2.plot(x, std_errors, "r-", label="Standard Deviation", marker="^")
+    ax2.set_xlabel("Fold Number")
+    ax2.set_ylabel("Error Magnitude")
+    ax2.set_title("Error Metrics Across Folds")
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    plt.tight_layout()
+    return fig, mean_errors, median_errors, std_errors
+
+
 def train_and_evaluate():
     """
     Train the model using time series cross-validation with additional analysis plots
     """
-
     df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/ml_training_data.csv")
+    df = df[df["quote.USD.price"] < 1000]
     X, y = prepare_data(df.iloc[:-30])
     timestamps = pd.to_datetime(df.iloc[:-30]["timestamp"])
 
@@ -403,10 +445,29 @@ def train_and_evaluate():
     deviation_fig.savefig(os.path.join("plots", "prediction_deviations.png"))
     plt.close(deviation_fig)
 
+    # Add new prediction error analysis
+    error_fig, mean_errors, median_errors, std_errors = plot_prediction_errors(
+        y_true_list, y_pred_list
+    )
+    error_fig.savefig(os.path.join("plots", "prediction_errors.png"))
+    plt.close(error_fig)
+
+    # Print detailed error metrics for each fold
+    print("\nDetailed Error Analysis by Fold:")
+    print("-" * 50)
+    for fold in range(len(y_true_list)):
+        errors = y_pred_list[fold] - y_true_list[fold]
+        print(f"\nFold {fold + 1}:")
+        print(f"Mean Absolute Error: {mean_errors[fold]:.4f}")
+        print(f"Median Absolute Error: {median_errors[fold]:.4f}")
+        print(f"Standard Deviation of Errors: {std_errors[fold]:.4f}")
+        print(f"Max Error: {np.max(np.abs(errors)):.4f}")
+        print(f"Min Error: {np.min(np.abs(errors)):.4f}")
+
     # Get feature importance using the last fold
     feature_importance = evaluate_feature_importance(model, final_X_test, final_y_test)
 
-    print("Cross-validation scores:", scores)
+    print("\nCross-validation scores:", scores)
     print("Average R² score:", np.mean(scores))
     print("\nTop 10 Most Important Features:")
     print(feature_importance.head(10))
