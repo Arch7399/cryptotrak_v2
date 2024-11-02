@@ -1,10 +1,34 @@
 # Cryptocurrency Analyzer
 
-This ongoing project is an advanced cryptocurrency analysis framework designed to identify promising trading opportunities using sophisticated technical analysis, market metrics, and multiple filtering strategies. The framework combines traditional technical indicators with custom metrics for comprehensive market analysis, anomaly detection, and backtesting capabilities.
+This ongoing project is an advanced cryptocurrency analysis framework designed to identify promising trading opportunities using sophisticated technical analysis, market metrics, multiple filtering strategies, and machine learning predictions. The framework combines traditional technical indicators with custom metrics and ML models for comprehensive market analysis, anomaly detection, price prediction, and backtesting capabilities.
 
 ![Crypto Predictions](./assets/trak-dashboard.png)
 
 ## Core Features
+
+### Machine Learning Price Prediction
+- **Advanced Gradient Boosting Model**
+  - Time-series based price prediction using HistGradientBoostingRegressor
+  - Optimized for short-term predictions with focus on lower price ranges
+  - Cross-validated performance metrics and visualization
+  ![performance metrics over folds](./assets/model_improvement.png)
+  - Feature importance analysis for prediction factors
+
+- **Prediction Analysis**
+  - Direction accuracy tracking
+  ![Direction accuracy](./assets/direction_accuracy.png)
+  - Prediction deviation analysis
+  ![Prediction deviation](./assets/prediction_deviations.png)
+  - Error distribution visualization
+  ![Error distribution](./assets/prediction_errors.png)
+  - Detailed prediction logs with PnL tracking
+  - Time-series cross-validation with multiple folds
+
+- **Feature Engineering**
+  - Time-based cyclical features
+  - Technical indicator combinations
+  - Market context integration
+  - Volume and price pattern analysis
 
 ### Technical Analysis
 - **Advanced Technical Indicators**:
@@ -159,7 +183,30 @@ python main.py
 ```
 
 The system will analyze cryptocurrency data and alert with the top 5 performing currencies based on the comprehensive scoring system.
-Important: It's recommended to run the Basic Analysis atleast 5 times spaced by an hour to populate the prediction data over which the backtesting can be performed. Note - You might get the "ValueError: Not enough timestamps to calculate the diffference." for upto 10 runs because of shortage of data to calculate difference metrics, but that is okay, since they are irrelevant for now and they are for upcoming ML implementation and doesnt hinder with the backtesting modules. 
+Important: It's recommended to run the Basic Analysis atleast 5 times spaced by an hour to populate the prediction data over which the ML model training and backtesting can be performed. 
+
+### Price Prediction
+```python
+python machine-learning/HistGradientBoosting/crypto-price-predictor.py
+```
+
+This will run the machine learning prediction system with the following capabilities:
+- Time-series based price predictions
+- Model performance visualization
+- Feature importance analysis
+- Prediction accuracy metrics
+- Direction accuracy analysis
+- Detailed prediction logs
+
+The system will generate several visualization plots in the `plots` directory:
+- Individual fold predictions
+- Model improvement over time
+- Direction accuracy analysis
+- Prediction deviations
+- Error distribution analysis
+
+Prediction logs will be stored in the `logs` directory with detailed metrics for each fold.
+
 
 ### Backtesting
 ```python
@@ -214,6 +261,12 @@ The system supports customization of various parameters through the configuratio
   - Risk management system
   - Performance metrics calculation
   - Results visualization
+
+- `crypto-price-predictor.py`: ML-based price prediction
+  - Time-series data preparation
+  - Model training and evaluation
+  - Performance visualization
+  - Prediction logging and analysis
 
 ## Contributing
 
