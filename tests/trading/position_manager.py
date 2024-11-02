@@ -2,6 +2,7 @@ from typing import Dict, Optional
 from models.position import EnhancedPosition
 from risk_management.risk_manager import EnhancedRiskManagement
 from utils.volatility import VolatilityCalculator
+from config import Config
 import pandas as pd
 import numpy as np
 import math
@@ -33,7 +34,7 @@ class PositionManager:
 
             # Check if position has been open for more than 5 hours
             if (timestamp - position.entry_timestamp) > pd.Timedelta(
-                hours=5
+                hours=Config.position_hold_time_limit
             ):  # change hours here
 
                 exit_price = current_price

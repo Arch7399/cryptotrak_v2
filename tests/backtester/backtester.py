@@ -13,6 +13,7 @@ from utils.metrics import MetricsCalculator
 from utils.volatility import VolatilityCalculator
 from tests.visualization.backtest_plots import BacktestVisualizer
 from trading.position_manager import PositionManager
+from config import Config
 
 
 class PredictionBacktester:
@@ -33,7 +34,7 @@ class PredictionBacktester:
             max_account_risk=0.15,
             max_volume_percent=0.03,
             fee_rate=0.001,
-            max_positions=100,
+            max_positions=Config.max_positions,
         )
         self.metrics = MetricsCalculator
         self.visualizer = BacktestVisualizer

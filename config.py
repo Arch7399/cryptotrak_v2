@@ -35,3 +35,8 @@ class Config:
 
     # INITIAL EQUITY IN $
     initial_equity = 10000
+
+    # MAX HOLDING PERIOD
+    position_hold_time_limit = 2
+
+    max_positions = 10
