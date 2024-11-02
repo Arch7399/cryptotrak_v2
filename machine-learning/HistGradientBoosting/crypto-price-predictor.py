@@ -380,12 +380,80 @@ def plot_prediction_errors(y_true_list, y_pred_list):
     return fig, mean_errors, median_errors, std_errors
 
 
+def create_prediction_log(timestamps_test, X_test, y_test, y_pred, fold):
+    """
+    Create an enhanced log file with prediction details for a specific fold
+
+    Parameters:
+    - timestamps_test: Timestamps for the test set
+    - y_test: Actual target values
+    - y_pred: Predicted values
+    - fold: Current fold number
+    """
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+
+    # Create log file for this fold
+    log_filename = os.path.join("logs", f"fold_{fold}_predictions.csv")
+
+    # Determine trade direction (bullish or bearish)
+    def get_trade_direction(current, target):
+        if target > current:
+            return "Bullish"
+        elif target < current:
+            return "Bearish"
+        else:
+            return "Neutral"
+
+    # Check if predicted price reaches halfway to target
+    def reaches_halfway_target(current, predicted, target):
+        halfway_point = (current + target) / 2
+        return (predicted >= halfway_point and target > current) or (
+            predicted <= halfway_point and target < current
+        )
+
+    # Create a DataFrame with prediction details
+    prediction_df = pd.DataFrame(
+        {
+            "timestamp": timestamps_test,
+            "current_price": X_test["quote.USD.price"],
+            "target_price": y_test,
+            "predicted_price": y_pred,
+            "absolute_error": np.abs(y_test - y_pred),
+            "prediction_error_percentage": np.abs(y_test - y_pred) / y_test * 100,
+            "trade_direction": [
+                get_trade_direction(current, target)
+                for current, target in zip(X_test["quote.USD.price"], y_test)
+            ],
+            "reached_halfway_target": [
+                reaches_halfway_target(current, pred, target)
+                for current, pred, target in zip(
+                    X_test["quote.USD.price"], y_pred, y_test
+                )
+            ],
+        }
+    )
+
+    prediction_df["pnl"] = np.abs(y_pred - X_test["quote.USD.price"]).where(
+        prediction_df["reached_halfway_target"], np.abs(y_test - y_pred) * -1
+    )
+    prediction_df["pnl_cm"] = prediction_df["pnl"].sum()
+
+    # Sort by absolute error to see most/least accurate predictions
+    prediction_df = prediction_df.sort_values("absolute_error", ascending=False)
+
+    # Save to CSV
+    prediction_df.to_csv(log_filename, index=False)
+
+    return prediction_df
+
+
 def train_and_evaluate():
     """
     Train the model using time series cross-validation with additional analysis plots
     """
     df = pd.read_csv(rf"C:/Users/{os.getenv('USER')}/Desktop/ml_training_data.csv")
-    df = df[df["quote.USD.price"] < 1000]
+    df = df[df["quote.USD.price"] < 100]
     X, y = prepare_data(df.iloc[:-30])
     timestamps = pd.to_datetime(df.iloc[:-30]["timestamp"])
 
@@ -429,6 +497,18 @@ def train_and_evaluate():
 
         final_X_test = X_test_scaled
         final_y_test = y_test
+
+        prediction_log = create_prediction_log(
+            timestamps_test, X_test, y_test, y_pred, fold
+        )
+
+        # Optional: Print summary of the log
+        print(f"\nFold {fold} Prediction Log Summary:")
+        print(f"Total predictions: {len(prediction_log)}")
+        print(f"Mean Absolute Error: {prediction_log['absolute_error'].mean():.4f}")
+        print(f"Median Absolute Error: {prediction_log['absolute_error'].median():.4f}")
+        print(f"Worst Prediction Error: {prediction_log['absolute_error'].max():.4f}")
+        print(f"Best Prediction Error: {prediction_log['absolute_error'].min():.4f}")
 
     # Create and save improvement visualization
     improvement_fig = plot_prediction_improvement(scores, y_true_list, y_pred_list)
