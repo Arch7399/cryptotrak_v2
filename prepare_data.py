@@ -3,7 +3,7 @@ import os
 
 
 def prepare_raw_data(df):
-    df["timestamp"] = pd.to_datetime("now", utc=True).strftime('%Y-%m-%dT%H:%M:%S')
+    df["timestamp"] = pd.to_datetime("now", utc=True).strftime("%Y-%m-%dT%H:%M:%S")
 
     if not os.path.isfile(rf"C:\Users\{os.getenv('USER')}\Desktop\CryptoAPI.csv"):
         df.to_csv(
